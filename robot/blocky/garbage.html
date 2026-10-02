@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Garbage Collector — e-puck2</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Saira+Condensed:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #0f110c;
+  --panel:   #161a12;
+  --panel2:  #1d2218;
+  --border:  #2d3526;
+  --text:    #d4dcc8;
+  --muted:   #5a6650;
+  --green:   #7ec850;
+  --yellow:  #e8b84b;
+  --red:     #e05c3a;
+  --blue:    #4fa8c5;
+  --amber:   #d48f2a;
+  --display: 'Saira Condensed', sans-serif;
+  --mono:    'Space Mono', monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--text);font-family:var(--display);min-height:100vh;}
+
+/* ── Header ── */
+header{
+  background:var(--panel);border-bottom:2px solid var(--border);
+  padding:12px 24px;display:flex;align-items:center;gap:14px;
+  position:relative;
+}
+header::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--amber),var(--green),var(--amber));
+  opacity:0.4;
+}
+.logo{font-family:var(--display);font-weight:800;font-size:1.3rem;color:var(--green);letter-spacing:0.08em;}
+.logo span{color:var(--muted);font-weight:400;}
+.unl-title{
+  position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;
+}
+.unl-title .t1{font-family:var(--mono);font-size:1.4rem;font-weight:700;color:#e3b341;letter-spacing:0.06em;line-height:1.2;}
+.unl-title .t2{font-family:var(--mono);font-size:0.65rem;color:#d4a017;letter-spacing:0.14em;text-transform:uppercase;}
+.team-input{
+  margin-left:auto;background:var(--panel2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--mono);font-size:0.72rem;
+  padding:6px 14px;border-radius:20px;outline:none;width:160px;text-align:center;
+}
+.team-input:focus{border-color:var(--amber);}
+.team-input::placeholder{color:var(--muted);}
+
+/* ── Level bar ── */
+.level-bar{
+  background:var(--panel2);border-bottom:1px solid var(--border);
+  padding:10px 24px;display:flex;align-items:center;gap:12px;
+}
+.level-label{font-family:var(--mono);font-size:0.58rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;white-space:nowrap;}
+.level-btns{display:flex;gap:8px;}
+.level-btn{
+  padding:6px 16px;border-radius:20px;border:2px solid var(--border);
+  background:var(--panel);color:var(--muted);font-family:var(--display);
+  font-weight:700;font-size:0.78rem;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;
+}
+.level-btn:hover{border-color:var(--text);color:var(--text);}
+.level-btn.active.l1{border-color:var(--green);color:var(--green);background:rgba(126,200,80,0.08);}
+.level-btn.active.l3{border-color:var(--red);color:var(--red);background:rgba(224,92,58,0.08);}
+.level-desc{font-size:0.7rem;color:var(--muted);font-style:italic;font-family:var(--display);}
+
+/* ── Score display ── */
+.score-bar{
+  background:var(--panel);border-bottom:1px solid var(--border);
+  padding:8px 24px;display:flex;align-items:center;gap:20px;
+}
+.score-cell{display:flex;align-items:center;gap:8px;}
+.score-label{font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--mono);}
+.score-val{font-family:var(--mono);font-weight:700;font-size:1.2rem;color:var(--yellow);}
+.score-val.good{color:var(--green);}
+.score-val.bad{color:var(--red);}
+.score-divider{width:1px;height:24px;background:var(--border);}
+.timer-display{font-family:var(--mono);font-weight:700;font-size:1.4rem;color:var(--blue);min-width:60px;}
+.timer-display.warn{color:var(--yellow);}
+.timer-display.crit{color:var(--red);animation:blink 0.5s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* ── Main layout ── */
+.main{display:grid;grid-template-columns:1fr 320px;gap:0;min-height:calc(100vh - 155px);}
+
+/* ── Workspace ── */
+.workspace{border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.ws-header{
+  padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;
+}
+.ws-title{font-family:var(--mono);font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--text);}
+
+/* ── Block canvas ── */
+.block-canvas{
+  flex:1;padding:16px;display:flex;flex-direction:column;gap:8px;
+  overflow-y:auto;background:var(--bg);
+  background-image:radial-gradient(var(--border) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+.block-canvas.drag-over{background-color:rgba(126,200,80,0.03);}
+
+/* ── Blocks ── */
+.block{
+  border-radius:8px;border:2px solid var(--border);
+  background:var(--panel);padding:10px 14px;
+  display:flex;align-items:center;gap:10px;
+  cursor:grab;user-select:none;
+  transition:border-color 0.15s,transform 0.1s;
+}
+.block:active{cursor:grabbing;transform:scale(0.98);}
+.block.dragging{opacity:0.35;}
+.block-icon{font-size:1.1rem;flex-shrink:0;width:26px;text-align:center;}
+.block-label{font-weight:700;font-size:0.8rem;color:var(--text);flex:1;font-family:var(--display);}
+.block-param{
+  background:var(--panel2);border:1px solid var(--border);
+  color:var(--amber);font-family:var(--mono);font-size:0.75rem;font-weight:700;
+  padding:3px 7px;border-radius:5px;text-align:center;min-width:50px;outline:none;cursor:pointer;
+}
+.block-param:focus{border-color:var(--amber);}
+.block-unit{font-size:0.65rem;color:var(--muted);flex-shrink:0;font-family:var(--mono);}
+.block.move    {border-left:4px solid var(--blue);}
+.block.turn    {border-left:4px solid var(--amber);}
+.block.sense   {border-left:4px solid var(--green);}
+.block.control {border-left:4px solid var(--yellow);}
+.block.garbage {border-left:4px solid var(--red);}
+.block.celebrate{border-left:4px solid #c084fc;}
+
+/* ── Toolkit ── */
+.toolkit{padding:14px 16px;background:var(--panel);border-top:1px solid var(--border);}
+.toolkit-title{font-family:var(--mono);font-size:0.58rem;color:var(--muted);letter-spacing:0.12em;margin-bottom:8px;text-transform:uppercase;}
+.toolkit-grid{display:flex;flex-wrap:wrap;gap:6px;}
+.tool-chip{
+  background:var(--panel2);border:1px solid var(--border);
+  border-radius:6px;padding:5px 10px;font-size:0.7rem;font-weight:700;
+  color:var(--text);cursor:grab;user-select:none;
+  display:flex;align-items:center;gap:5px;font-family:var(--display);
+  transition:border-color 0.15s,transform 0.1s;
+}
+.tool-chip:hover{border-color:var(--green);transform:translateY(-1px);}
+.tool-chip:active{cursor:grabbing;transform:scale(0.95);}
+
+/* ── Recycle bin ── */
+.bin-area{padding:10px 16px;background:rgba(224,92,58,0.04);border-top:1px solid rgba(224,92,58,0.15);display:none;}
+.bin-title{font-family:var(--mono);font-size:0.55rem;color:var(--red);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.bin-grid{display:flex;flex-wrap:wrap;gap:6px;}
+.bin-chip{
+  background:var(--panel2);border:1px dashed rgba(224,92,58,0.3);
+  border-radius:6px;padding:4px 9px;font-size:0.68rem;font-weight:600;
+  color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:4px;font-family:var(--display);
+}
+.bin-chip:hover{color:var(--text);border-color:var(--red);}
+
+/* ── Drop placeholder ── */
+.drop-ph{
+  border:2px dashed var(--border);border-radius:8px;height:48px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.68rem;color:var(--muted);font-family:var(--display);
+}
+.drop-ph.active{border-color:var(--green);color:var(--green);}
+
+/* ── Right panel ── */
+.right-panel{display:flex;flex-direction:column;background:var(--panel);}
+.r-section{padding:14px 16px;border-bottom:1px solid var(--border);}
+.r-title{font-family:var(--mono);font-size:0.58rem;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:10px;}
+
+/* ── Connect ── */
+.robot-select{
+  width:100%;background:var(--panel2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--display);font-size:0.8rem;
+  padding:7px 10px;border-radius:7px;outline:none;margin-bottom:7px;
+}
+.robot-select:focus{border-color:var(--amber);}
+.btn-connect{
+  width:100%;padding:8px;border-radius:7px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-family:var(--display);
+  font-weight:700;font-size:0.8rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;transition:all 0.15s;
+}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.3s;}
+.btn-connect.connected{border-color:var(--green);color:var(--green);background:rgba(126,200,80,0.08);}
+.btn-connect.connected .conn-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
+.btn-connect.connecting{border-color:var(--yellow);color:var(--yellow);}
+.btn-connect.error{border-color:var(--red);color:var(--red);}
+
+/* ── Garbage count ── */
+.gc-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.gc-label{font-size:0.75rem;font-weight:700;color:var(--text);flex:1;}
+.gc-input{
+  width:60px;background:var(--panel2);border:1px solid var(--border);
+  color:var(--amber);font-family:var(--mono);font-weight:700;font-size:0.9rem;
+  padding:5px 8px;border-radius:6px;text-align:center;outline:none;
+}
+.gc-input:focus{border-color:var(--amber);}
+
+/* ── Launch ── */
+.btn-send{
+  width:100%;padding:13px;border-radius:8px;border:none;
+  background:var(--green);color:#000;font-family:var(--display);
+  font-weight:800;font-size:1rem;letter-spacing:0.06em;
+  cursor:pointer;transition:all 0.15s;margin-bottom:7px;
+}
+.btn-send:hover{opacity:0.9;}
+.btn-send:disabled{opacity:0.3;pointer-events:none;}
+.btn-stop{
+  width:100%;padding:9px;border-radius:8px;border:2px solid var(--red);
+  background:rgba(224,92,58,0.1);color:var(--red);font-family:var(--display);
+  font-weight:800;font-size:0.85rem;cursor:pointer;display:none;margin-bottom:7px;
+}
+.btn-stop.visible{display:block;}
+.status-line{
+  font-size:0.68rem;color:var(--muted);display:flex;align-items:center;gap:6px;font-family:var(--display);
+}
+.s-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+.status-line.running{color:var(--green);}
+.status-line.running .s-dot{background:var(--green);}
+.status-line.error{color:var(--red);}
+.status-line.error .s-dot{background:var(--red);}
+
+/* ── Timer box ── */
+.timer-box{
+  display:none;background:var(--panel2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;text-align:center;margin-bottom:7px;
+}
+.timer-box-label{font-size:0.55rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;font-family:var(--mono);}
+.timer-box-val{font-family:var(--mono);font-weight:700;font-size:2rem;color:var(--green);line-height:1;}
+
+/* ── Score live ── */
+.live-score{
+  background:var(--panel2);border:1px solid var(--border);border-radius:8px;
+  padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:7px;
+}
+.ls-cell{display:flex;flex-direction:column;gap:2px;}
+.ls-label{font-size:0.55rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;font-family:var(--mono);}
+.ls-val{font-family:var(--mono);font-weight:700;font-size:1.3rem;color:var(--text);}
+.ls-val.pts{color:var(--yellow);}
+.ls-val.coll{color:var(--red);}
+.ls-val.items{color:var(--green);}
+
+/* ── Log ── */
+.log-box{
+  flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;
+  padding:8px 10px;font-family:var(--mono);font-size:0.62rem;
+  color:var(--muted);max-height:160px;overflow-y:auto;line-height:1.8;
+}
+.log-score{color:var(--yellow);font-weight:bold;}
+.log-push{color:var(--green);}
+.log-coll{color:var(--red);}
+.log-info{color:var(--text);}
+
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="30" height="30" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="22" r="13" fill="#1a2a10" stroke="#7ec850" stroke-width="1.5"/>
+    <circle cx="15" cy="18" r="3" fill="#7ec850"/>
+    <circle cx="25" cy="18" r="3" fill="#7ec850"/>
+    <rect x="15" y="25" width="10" height="2.5" rx="1.25" fill="#7ec850" opacity=".6"/>
+    <rect x="18" y="7" width="4" height="6" rx="2" fill="#1d2218" stroke="#7ec850" stroke-width="1"/>
+  </svg>
+  <div class="logo">GARBAGE <span>/ collector</span></div>
+  <div class="unl-title">
+    <div class="t1">UNamur Robotics Lab</div>
+    <div class="t2">University of Namur</div>
+  </div>
+  <input class="team-input" id="teamName" type="text" placeholder="Team name…" maxlength="20">
+</header>
+
+<!-- Level bar -->
+<div class="level-bar">
+  <div class="level-label">Level:</div>
+  <div class="level-btns">
+    <button class="level-btn l1 active" onclick="setLevel(1)">🟢 Explorer</button>
+    <button class="level-btn l3"        onclick="setLevel(3)">🔴 Engineer</button>
+  </div>
+  <div class="level-desc" id="levelDesc">Blocks are pre-arranged — tune the numbers</div>
+</div>
+
+<div class="main">
+
+  <!-- Workspace -->
+  <div class="workspace">
+    <div class="ws-header">
+      <div class="ws-title">PROGRAM</div>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button id="undoBtn" onclick="undoAction()"
+          style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:0.62rem;padding:3px 9px;border-radius:5px;cursor:pointer;opacity:0.4;pointer-events:none;">↩ Undo</button>
+        <button onclick="showCode()"
+          style="background:rgba(79,168,197,0.1);border:1px solid var(--blue);color:var(--blue);font-family:var(--mono);font-size:0.62rem;padding:3px 9px;border-radius:5px;cursor:pointer;">{ } Code</button>
+        <button onclick="showHelp()"
+          style="background:rgba(126,200,80,0.1);border:1px solid var(--green);color:var(--green);font-family:var(--mono);font-size:0.62rem;padding:3px 9px;border-radius:5px;cursor:pointer;">📖 Help</button>
+        <button onclick="clearCanvas()"
+          style="background:none;border:1px solid var(--red);color:var(--red);font-family:var(--mono);font-size:0.62rem;padding:3px 9px;border-radius:5px;cursor:pointer;">🗑 Clear</button>
+      </div>
+    </div>
+
+    <div class="block-canvas" id="blockCanvas"
+      ondragover="onCanvasDragOver(event)" ondrop="onCanvasDrop(event)" ondragleave="onCanvasDragLeave(event)">
+      <div class="drop-ph" id="dropHint">Drop blocks here</div>
+    </div>
+
+    <div class="toolkit" id="toolkit">
+      <div class="toolkit-title">Toolkit — drag or click to add</div>
+      <div class="toolkit-grid" id="toolkitGrid"></div>
+    </div>
+
+    <div class="bin-area" id="binArea">
+      <div class="bin-title">🗑 Recycle bin
+        <span style="font-weight:400;font-style:italic;color:var(--muted);">click to restore</span>
+        <button onclick="clearBin()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:0.6rem;cursor:pointer;font-family:var(--mono);">empty</button>
+      </div>
+      <div class="bin-grid" id="binGrid"></div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+
+    <!-- Garbage count -->
+    <div class="r-section">
+      <div class="r-title">Arena setup</div>
+      <div class="gc-row">
+        <div class="gc-label">🗑 Number of garbage items</div>
+        <input class="gc-input" type="number" id="garbageCount" value="3" min="1" max="10">
+      </div>
+      <div style="font-size:0.65rem;color:var(--muted);font-family:var(--display);">Set this to match how many boxes you placed in the arena</div>
+    </div>
+
+    <!-- Connect -->
+    <div class="r-section">
+      <div class="r-title">Robot</div>
+      <select class="robot-select" id="robotSelect">
+        <option value="">— select robot —</option>
+        <option value="192.168.0.111">🤖 Robot1-111</option>
+        <option value="192.168.0.113">🤖 Robot2-113</option>
+        <option value="192.168.0.114">🤖 Robot3-114</option>
+        <option value="192.168.0.115">🤖 Robot4-115</option>
+        <option value="192.168.0.118">🤖 Robot5-118</option>
+        <option value="192.168.0.121">🤖 Robot6-121</option>
+        <option value="192.168.0.124">🤖 Robot7-124</option>
+      </select>
+      <button class="btn-connect" id="connectBtn" onclick="toggleConnect()">
+        <div class="conn-dot"></div>
+        <span id="connectLabel">Connect</span>
+      </button>
+    </div>
+
+    <!-- Launch -->
+    <div class="r-section">
+      <div class="timer-box" id="timerBox">
+        <div class="timer-box-label">Elapsed time</div>
+        <div class="timer-box-val" id="timerBoxVal">0.0s</div>
+      </div>
+      <div class="live-score" id="liveScore">
+        <div class="ls-cell"><div class="ls-label">Score</div><div class="ls-val pts" id="lsScore">0</div></div>
+        <div class="ls-cell"><div class="ls-label">Collected</div><div class="ls-val items" id="lsItems">0</div></div>
+        <div class="ls-cell"><div class="ls-label">Remaining</div><div class="ls-val" id="lsRemaining">—</div></div>
+        <div class="ls-cell"><div class="ls-label">Collisions</div><div class="ls-val coll" id="lsColl">0</div></div>
+      </div>
+      <button class="btn-send" id="sendBtn" onclick="sendProgram()" disabled>▶ START COLLECTING</button>
+      <button class="btn-stop" id="stopBtn" onclick="stopRobot()">⛔ STOP</button>
+      <div class="status-line" id="statusLine">
+        <div class="s-dot"></div>
+        <span id="statusText">Connect your robot first</span>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="r-section" style="flex:1;display:flex;flex-direction:column;gap:6px;">
+      <div class="r-title" style="display:flex;justify-content:space-between;">
+        Log
+        <button onclick="document.getElementById('logBox').innerHTML=''" style="background:none;border:none;color:var(--muted);font-size:0.6rem;cursor:pointer;font-family:var(--mono);">clear</button>
+      </div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Code modal -->
+<div id="codeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:999;align-items:flex-start;justify-content:center;padding:40px 24px;overflow-y:auto;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;width:100%;max-width:700px;overflow:hidden;">
+    <div style="padding:12px 18px;background:var(--panel2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+      <div style="font-family:var(--mono);font-size:0.68rem;font-weight:700;letter-spacing:0.1em;color:var(--blue);">{ } GENERATED CODE</div>
+      <div style="font-size:0.62rem;color:var(--muted);font-style:italic;" id="codeSummary"></div>
+      <button onclick="copyCode()" id="copyBtn" style="margin-left:auto;background:rgba(79,168,197,0.1);border:1px solid var(--blue);color:var(--blue);font-family:var(--mono);font-size:0.62rem;padding:3px 10px;border-radius:5px;cursor:pointer;">📋 Copy</button>
+      <button onclick="closeCode()" style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:0.62rem;padding:3px 8px;border-radius:5px;cursor:pointer;">✕</button>
+    </div>
+    <pre id="codeDisplay" style="padding:18px;font-family:var(--mono);font-size:0.75rem;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre;max-height:65vh;overflow-y:auto;margin:0;"></pre>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let ws = null, wsConnected = false, robotRunning = false;
+let currentLevel = 1;
+let _timerInterval = null, _timerStart = 0;
+let _score = 0, _collected = 0, _collisions = 0, _collCooldown = 0;
+let dragSrcIndex = null, dragSrcToolkit = false;
+const undoStack = [], binBlocks = [];
+let canvasBlocks = [];
+
+// ── Block definitions ─────────────────────────────────────────────────────
+const BLOCK_DEFS = {
+  boundary_sens:{ icon:'🚫', label:'Boundary sensitivity',    type:'sense',     params:[{id:'thr', label:'black tape threshold', unit:'', min:100, max:800, step:25, default:500}] },
+  set_speed:    { icon:'⚡', label:'Set speed',              type:'move',      params:[{id:'spd', label:'speed', unit:'%', min:10, max:100, step:5, default:50}] },
+  scan_approach: { icon:'🔍', label:'Scan & approach', type:'move', params:[{id:'scan_thr', label:'scan threshold', unit:'cm', min:10, max:80, step:5, default:35},{id:'scan_spd', label:'scan speed', unit:'%', min:5, max:40, step:5, default:20},{id:'reposition', label:'reposition move', unit:'s', min:0.2, max:3, step:0.1, default:1.0},{id:'approach_spd', label:'approach speed', unit:'%', min:10, max:80, step:5, default:35}] },
+  wander:       { icon:'🌀', label:'Random wander',          type:'move',      params:[{id:'dur', label:'straight duration', unit:'s', min:0.1, max:5, step:0.1, default:0.5},{id:'turn_chance', label:'turn probability', unit:'%', min:5, max:90, step:5, default:30},{id:'turn_dur', label:'turn duration', unit:'ms', min:100, max:1000, step:50, default:400}] },
+  turn_left:    { icon:'↰',  label:'Turn left',              type:'turn',      params:[{id:'deg', label:'angle', unit:'°', min:10, max:360, step:10, default:90}] },
+  turn_right:   { icon:'↱',  label:'Turn right',             type:'turn',      params:[{id:'deg',      unit:'°',  min:10, max:360, step:10,  default:90}] },
+  if_obstacle:  { icon:'🚧', label:'If obstacle → turn away',type:'sense',     params:[{id:'thr', label:'detection threshold', unit:'', min:50, max:800, step:25, default:150}] },
+  find_garbage: { icon:'🗑',  label:'If garbage found → push',type:'garbage',   params:[{id:'thr', label:'detection threshold', unit:'', min:50, max:800, step:25, default:150},{id:'pushspd', label:'push speed', unit:'%', min:10, max:100, step:5, default:60}] },
+  push_out:     { icon:'💨', label:'Push until boundary',    type:'garbage',   params:[{id:'timeout', label:'max push time', unit:'s', min:1, max:15, step:0.5, default:5}] },
+  celebrate:    { icon:'🎉', label:'Celebrate + score point', type:'celebrate', params:[] },
+  align_garbage: { icon:'🎯', label:'Align to garbage', type:'garbage', params:[{id:'thr', label:'detection threshold', unit:'', min:50, max:800, step:25, default:150},{id:'align_thr', label:'align precision', unit:'', min:5, max:100, step:5, default:30}] },
+  side_detect:   { icon:'↔️', label:'Turn toward side garbage', type:'garbage', params:[{id:'thr', label:'side threshold', unit:'', min:50, max:800, step:25, default:150}] },
+  repeat:       { icon:'🔁', label:'Repeat',                 type:'control',   params:[{id:'n', label:'times', unit:'×', min:2, max:20, step:1, default:5}] },
+};
+
+// ── Presets ───────────────────────────────────────────────────────────────
+const LEVEL_PRESETS = {
+  1: [
+    // Correct order: boundary_sens, set_speed, wander, find_garbage, push_out, celebrate
+    // Shuffled so students must rearrange them
+    {type:'push_out',      params:{timeout:5}},
+    {type:'wander',        params:{dur:0.5, turn_chance:30, turn_dur:400}},
+    {type:'celebrate',     params:{}},
+    {type:'boundary_sens', params:{thr:500}},
+    {type:'find_garbage',  params:{thr:150, pushspd:60}},
+    {type:'set_speed',     params:{spd:50}},
+  ],
+  3: [],
+};
+
+const TOOLKIT_BLOCKS = ['boundary_sens','set_speed','scan_approach','wander','turn_left','turn_right','side_detect','align_garbage','find_garbage','push_out','celebrate','repeat'];
+
+const LEVEL_DESCS = {
+  1: 'Blocks are shuffled — arrange them in the right order then tune the numbers',
+  3: 'Empty workspace — build your collector from scratch',
+};
+
+// ── Preamble ──────────────────────────────────────────────────────────────
+const PREAMBLE = `
+MAX_SPEED    = 6.28
+CRUISE_SPEED = 0.8 * MAX_SPEED
+timestep = int(robot.getBasicTimeStep())
+left_motor  = robot.getDevice('left wheel motor')
+right_motor = robot.getDevice('right wheel motor')
+left_motor.setPosition(float('inf'))
+right_motor.setPosition(float('inf'))
+left_motor.setVelocity(0.0)
+right_motor.setVelocity(0.0)
+sensors = []
+for i in range(8):
+    s = robot.getDevice(f'ps{i}')
+    s.enable(timestep)
+    sensors.append(s)
+_gs = robot.getDevice('ground_sensor')
+import random as _rnd
+import time as _time
+`;
+
+// ── Code generation ───────────────────────────────────────────────────────
+function generateCode() {
+  let code = `
+_spd         = 0.5 * MAX_SPEED
+_score       = 0
+_coll_time   = 0.0
+_pushing     = False
+_push_start  = 0.0
+_push_thr    = 150    # default, overwritten by find_garbage block
+GS_BOUNDARY  = 500    # ground sensor threshold for black tape
+
+while True:
+    # ── Boundary check — highest priority, runs every iteration ──────────
+    _gs_min = min(_gs.getLeft(), _gs.getCenter(), _gs.getRight())
+    if _gs_min < GS_BOUNDARY and not _pushing:
+        # Hit boundary while wandering → back up and turn around
+        left_motor.setVelocity(-_spd)
+        right_motor.setVelocity(-_spd)
+        robot.step(400)
+        _turn = 1 if _rnd.random() > 0.5 else -1
+        left_motor.setVelocity( _turn * 0.5 * MAX_SPEED)
+        right_motor.setVelocity(-_turn * 0.5 * MAX_SPEED)
+        robot.step(int(_rnd.uniform(400, 800)))
+        robot.step(timestep)
+        continue
+    # ─────────────────────────────────────────────────────────────────────
+`;
+  canvasBlocks.forEach(b => { code += blockToCode(b, '    '); });
+  code += `    robot.step(timestep)\n`;
+  return code;
+}
+
+function blockToCode(b, indent) {
+  const p = b.params;
+  switch(b.type) {
+
+    case 'boundary_sens':
+      return `${indent}GS_BOUNDARY = ${p.thr}  # tune if robot crosses or ignores boundary\n`;
+
+    case 'set_speed':
+      return `${indent}_spd = ${p.spd} / 100.0 * MAX_SPEED\n`;
+
+    case 'scan_approach':
+      return `${indent}if not _pushing:\n` +
+             `${indent}    _tof = robot.getDevice('tof')\n` +
+             `${indent}    _tof.enable(timestep)\n` +
+             `${indent}    _scan_spd  = ${p.scan_spd} / 100.0 * MAX_SPEED\n` +
+             `${indent}    _scan_thr  = ${p.scan_thr} * 10\n` +
+             `${indent}    _found_dir = False\n` +
+             `${indent}\n` +
+             `${indent}    # Phase 1: spin slowly and scan with ToF\n` +
+             `${indent}    for _sc in range(int(360 / 45 * 660 / timestep)):\n` +
+             `${indent}        if min(_gs.getLeft(), _gs.getCenter(), _gs.getRight()) < GS_BOUNDARY: break\n` +
+             `${indent}        _dist = _tof.getDistance()\n` +
+             `${indent}        if 0 < _dist < _scan_thr:\n` +
+             `${indent}            _found_dir = True\n` +
+             `${indent}            left_motor.setVelocity(0)\n` +
+             `${indent}            right_motor.setVelocity(0)\n` +
+             `${indent}            robot.step(80)\n` +
+             `${indent}            break\n` +
+             `${indent}        left_motor.setVelocity(_scan_spd)\n` +
+             `${indent}        right_motor.setVelocity(-_scan_spd)\n` +
+             `${indent}        robot.step(timestep)\n` +
+             `${indent}\n` +
+             `${indent}    # Phase 2: approach WITH live steering — centers on box while moving\n` +
+             `${indent}    if _found_dir:\n` +
+             `${indent}        _ap_spd = ${p.approach_spd} / 100.0 * MAX_SPEED\n` +
+             `${indent}        _K_ap = 0.0006  # steering gain during approach\n` +
+             `${indent}        for _ap in range(int(4000 / timestep)):\n` +
+             `${indent}            if min(_gs.getLeft(), _gs.getCenter(), _gs.getRight()) < GS_BOUNDARY: break\n` +
+             `${indent}            _pf_ap = [sensors[j].getValue() for j in [0,1,6,7]]\n` +
+             `${indent}            _pm_ap = max(_pf_ap)\n` +
+             `${indent}            if _pm_ap > _push_thr:\n` +
+             `${indent}                # Close enough — smooth stop, let find_garbage take over\n` +
+             `${indent}                left_motor.setVelocity(0)\n` +
+             `${indent}                right_motor.setVelocity(0)\n` +
+             `${indent}                robot.step(60)\n` +
+             `${indent}                break\n` +
+             `${indent}            _d_ap = _tof.getDistance()\n` +
+             `${indent}            if _d_ap == -1 or _d_ap > _scan_thr * 1.5: break\n` +
+             `${indent}            # Steer to keep box centered while approaching\n` +
+             `${indent}            _steer_ap = (_pf_ap[0] + _pf_ap[2]) - (_pf_ap[1] + _pf_ap[3])\n` +
+             `${indent}            _l_ap = _ap_spd - _K_ap * _steer_ap\n` +
+             `${indent}            _r_ap = _ap_spd + _K_ap * _steer_ap\n` +
+             `${indent}            left_motor.setVelocity(max(0.05 * MAX_SPEED, min(MAX_SPEED, _l_ap)))\n` +
+             `${indent}            right_motor.setVelocity(max(0.05 * MAX_SPEED, min(MAX_SPEED, _r_ap)))\n` +
+             `${indent}            robot.step(timestep)\n` +
+             `${indent}\n` +
+             `${indent}    # Phase 3: nothing found — short forward move to reposition\n` +
+             `${indent}    elif not _found_dir:\n` +
+             `${indent}        for _mv in range(int(${p.reposition} * 1000 / timestep)):\n` +
+             `${indent}            if min(_gs.getLeft(), _gs.getCenter(), _gs.getRight()) < GS_BOUNDARY: break\n` +
+             `${indent}            left_motor.setVelocity(_spd)\n` +
+             `${indent}            right_motor.setVelocity(_spd)\n` +
+             `${indent}            robot.step(timestep)\n`;
+
+    case 'wander':
+      return `${indent}if not _pushing:\n` +
+             `${indent}    # Straight — broken into timesteps so boundary is checked every step\n` +
+             `${indent}    for _ws in range(int(${p.dur} * 1000 / timestep)):\n` +
+             `${indent}        _gw = min(_gs.getLeft(), _gs.getCenter(), _gs.getRight())\n` +
+             `${indent}        if _gw < GS_BOUNDARY:\n` +
+             `${indent}            left_motor.setVelocity(-_spd)\n` +
+             `${indent}            right_motor.setVelocity(-_spd)\n` +
+             `${indent}            robot.step(400)\n` +
+             `${indent}            _tw = 1 if _rnd.random() > 0.5 else -1\n` +
+             `${indent}            left_motor.setVelocity( _tw * 0.5 * MAX_SPEED)\n` +
+             `${indent}            right_motor.setVelocity(-_tw * 0.5 * MAX_SPEED)\n` +
+             `${indent}            robot.step(int(_rnd.uniform(400, 800)))\n` +
+             `${indent}            break\n` +
+             `${indent}        left_motor.setVelocity(_spd)\n` +
+             `${indent}        right_motor.setVelocity(_spd)\n` +
+             `${indent}        robot.step(timestep)\n` +
+             `${indent}    # Random turn with probability ${p.turn_chance}%\n` +
+             `${indent}    if _rnd.random() < ${p.turn_chance} / 100.0:\n` +
+             `${indent}        _turn = 1 if _rnd.random() > 0.5 else -1\n` +
+             `${indent}        for _wt in range(int(${p.turn_dur} / timestep)):\n` +
+             `${indent}            _gw2 = min(_gs.getLeft(), _gs.getCenter(), _gs.getRight())\n` +
+             `${indent}            if _gw2 < GS_BOUNDARY: break\n` +
+             `${indent}            left_motor.setVelocity( _turn * 0.5 * MAX_SPEED)\n` +
+             `${indent}            right_motor.setVelocity(-_turn * 0.5 * MAX_SPEED)\n` +
+             `${indent}            robot.step(timestep)\n`;
+
+    case 'turn_left':
+      return `${indent}left_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}right_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}robot.step(int(${p.deg} / 90.0 * 660))\n`;
+
+    case 'turn_right':
+      return `${indent}left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}robot.step(int(${p.deg} / 90.0 * 660))\n`;
+
+    case 'if_obstacle':
+      return `${indent}if not _pushing:\n` +
+             `${indent}    _ps = [sensors[i].getValue() for i in range(8)]\n` +
+             `${indent}    if _ps[0] > ${p.thr} or _ps[7] > ${p.thr}:\n` +
+             `${indent}        if _ps[0] >= _ps[7]:\n` +
+             `${indent}            left_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}            right_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}        else:\n` +
+             `${indent}            left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}            right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(400)\n`;
+
+    case 'side_detect':
+      // Side sensors ps2 (right) and ps5 (left) — turn to face garbage
+      return `${indent}if not _pushing:\n` +
+             `${indent}    _ps_sides = [sensors[2].getValue(), sensors[5].getValue()]\n` +
+             `${indent}    if _ps_sides[0] > ${p.thr} and _ps_sides[0] >= _ps_sides[1]:\n` +
+             `${indent}        # Garbage on right side → turn right to face it\n` +
+             `${indent}        left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(int(60.0 / 90.0 * 660))\n` +
+             `${indent}    elif _ps_sides[1] > ${p.thr} and _ps_sides[1] > _ps_sides[0]:\n` +
+             `${indent}        # Garbage on left side → turn left to face it\n` +
+             `${indent}        left_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(int(60.0 / 90.0 * 660))\n`;
+
+    case 'align_garbage':
+      // Align using all 4 front sensors, then back up slightly (Option C + D)
+      return `${indent}if not _pushing:\n` +
+             `${indent}    _ps_align = [sensors[0].getValue(), sensors[1].getValue(),\n` +
+             `${indent}                 sensors[6].getValue(), sensors[7].getValue()]\n` +
+             `${indent}    _align_max = max(_ps_align)\n` +
+             `${indent}    if _align_max > ${p.thr}:\n` +
+             `${indent}        # Alignment loop — max 30 micro-corrections\n` +
+             `${indent}        _align_steps = 0\n` +
+             `${indent}        while _align_steps < 30:\n` +
+             `${indent}            _pa = [sensors[0].getValue(), sensors[1].getValue(),\n` +
+             `${indent}                   sensors[6].getValue(), sensors[7].getValue()]\n` +
+             `${indent}            # ps0+ps6 = right side, ps1+ps7 = left side\n` +
+             `${indent}            _diff = (_pa[0] + _pa[2]) - (_pa[1] + _pa[3])\n` +
+             `${indent}            if abs(_diff) <= ${p.align_thr}:\n` +
+             `${indent}                break  # centered\n` +
+             `${indent}            elif _diff > 0:\n` +
+             `${indent}                left_motor.setVelocity(-0.25 * MAX_SPEED)\n` +
+             `${indent}                right_motor.setVelocity(0.25 * MAX_SPEED)\n` +
+             `${indent}            else:\n` +
+             `${indent}                left_motor.setVelocity(0.25 * MAX_SPEED)\n` +
+             `${indent}                right_motor.setVelocity(-0.25 * MAX_SPEED)\n` +
+             `${indent}            robot.step(timestep)\n` +
+             `${indent}            _align_steps += 1\n` +
+             `${indent}        left_motor.setVelocity(0)\n` +
+             `${indent}        right_motor.setVelocity(0)\n` +
+             `${indent}        robot.step(100)\n` +
+             `${indent}        # Option D: back up slightly to reset contact angle\n` +
+             `${indent}        left_motor.setVelocity(-0.3 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(-0.3 * MAX_SPEED)\n` +
+             `${indent}        robot.step(250)\n` +
+             `${indent}        left_motor.setVelocity(0)\n` +
+             `${indent}        right_motor.setVelocity(0)\n` +
+             `${indent}        robot.step(80)\n`;
+
+    case 'find_garbage':
+      return `${indent}# Only check FRONT sensors (ps0, ps1, ps6, ps7)\n` +
+             `${indent}_ps_front = [sensors[j].getValue() for j in [0,1,6,7]]\n` +
+             `${indent}_ps_front_max = max(_ps_front)\n` +
+             `${indent}if not _pushing and _ps_front_max > ${p.thr}:\n` +
+             `${indent}    _pushing    = True\n` +
+             `${indent}    _push_start = _time.time()\n` +
+             `${indent}    _push_thr   = ${p.thr}\n` +
+             `${indent}    _push_spd   = ${p.pushspd} / 100.0 * MAX_SPEED\n` +
+             `${indent}    _K_steer    = 0.0008  # proportional gain for steering during push\n` +
+             `${indent}    print('PUSH')\n` +
+             `${indent}# Option B: proportional steering during push\n` +
+             `${indent}if _pushing:\n` +
+             `${indent}    _pf = [sensors[j].getValue() for j in [0,1,6,7]]\n` +
+             `${indent}    _steer = (_pf[0] + _pf[2]) - (_pf[1] + _pf[3])\n` +
+             `${indent}    _l = _push_spd - _K_steer * _steer\n` +
+             `${indent}    _r = _push_spd + _K_steer * _steer\n` +
+             `${indent}    left_motor.setVelocity(max(0.1, min(MAX_SPEED, _l)))\n` +
+             `${indent}    right_motor.setVelocity(max(0.1, min(MAX_SPEED, _r)))\n`;
+
+    case 'push_out':
+      return `${indent}if _pushing:\n` +
+             `${indent}    _gs_min       = min(_gs.getLeft(), _gs.getCenter(), _gs.getRight())\n` +
+             `${indent}    _ps_front_chk = [sensors[j].getValue() for j in [0,1,6,7]]\n` +
+             `${indent}    _ps_contact   = max(_ps_front_chk)\n` +
+             `${indent}    _push_elapsed = _time.time() - _push_start\n` +
+             `${indent}    if _gs_min < GS_BOUNDARY and _push_elapsed < 1.0:\n` +
+             `${indent}        # Too fast — robot was already near boundary, false positive\n` +
+             `${indent}        _pushing = False\n` +
+             `${indent}        print('FALSE_BOUNDARY')\n` +
+             `${indent}        left_motor.setVelocity(-_spd)\n` +
+             `${indent}        right_motor.setVelocity(-_spd)\n` +
+             `${indent}        robot.step(500)\n` +
+             `${indent}        _turn = 1 if _rnd.random() > 0.5 else -1\n` +
+             `${indent}        left_motor.setVelocity( _turn * 0.5 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(-_turn * 0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(700)\n` +
+             `${indent}    elif _gs_min < GS_BOUNDARY and _push_elapsed >= 1.0:\n` +
+             `${indent}        # Genuine push-out — garbage crossed boundary!\n` +
+             `${indent}        _pushing = False\n` +
+             `${indent}        print('COLLECTED')\n` +
+             `${indent}        left_motor.setVelocity(-_spd)\n` +
+             `${indent}        right_motor.setVelocity(-_spd)\n` +
+             `${indent}        robot.step(600)\n` +
+             `${indent}        left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(800)\n` +
+             `${indent}    elif _ps_contact < _push_thr:\n` +
+             `${indent}        # Front sensors lost the garbage — resume wandering\n` +
+             `${indent}        _pushing = False\n` +
+             `${indent}        print('LOST_GARBAGE')\n` +
+             `${indent}        robot.step(200)\n` +
+             `${indent}    elif _push_elapsed > ${p.timeout}:\n` +
+             `${indent}        # Timeout — give up and resume wandering\n` +
+             `${indent}        _pushing = False\n` +
+             `${indent}        print('PUSH_TIMEOUT')\n` +
+             `${indent}        left_motor.setVelocity(-_spd)\n` +
+             `${indent}        right_motor.setVelocity(-_spd)\n` +
+             `${indent}        robot.step(400)\n` +
+             `${indent}        left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}        right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}        robot.step(600)\n`;
+    case 'celebrate':
+      return `${indent}# Celebration after collecting garbage\n` +
+             `${indent}if not _pushing:\n` +
+             `${indent}    pass  # score updated by COLLECTED message\n`;
+
+    case 'repeat':
+      return `${indent}for _ri in range(${p.n}):\n` +
+             `${indent}    robot.step(timestep)\n`;
+
+    default: return '';
+  }
+}
+
+// ── Level setup ───────────────────────────────────────────────────────────
+function setLevel(n) {
+  currentLevel = n;
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.level-btn.l${n}`).classList.add('active');
+  document.getElementById('levelDesc').textContent = LEVEL_DESCS[n];
+  canvasBlocks = LEVEL_PRESETS[n].map(b => ({...b, params:{...b.params}}));
+  renderCanvas();
+  renderToolkit();
+}
+
+// ── Render canvas ─────────────────────────────────────────────────────────
+function renderCanvas() {
+  const canvas = document.getElementById('blockCanvas');
+  canvas.innerHTML = '';
+  if (canvasBlocks.length === 0) {
+    canvas.innerHTML = '<div class="drop-ph" id="dropHint">Drop blocks here</div>';
+    return;
+  }
+  canvasBlocks.forEach((b, idx) => {
+    const def = BLOCK_DEFS[b.type];
+    const div = document.createElement('div');
+    div.className = 'block ' + def.type;
+    div.draggable = true;
+    div.dataset.index = idx;
+    div.addEventListener('dragstart', e => { dragSrcIndex = idx; dragSrcToolkit = false; div.classList.add('dragging'); });
+    div.addEventListener('dragend',   e => div.classList.remove('dragging'));
+    div.addEventListener('dragover',  e => e.preventDefault());
+    div.addEventListener('drop',      e => { e.preventDefault(); onBlockDrop(idx); });
+
+    let paramsHTML = '';
+    (def.params || []).forEach(p => {
+      paramsHTML += `
+        <span style="font-size:0.58rem;color:var(--muted);font-family:var(--mono);white-space:nowrap;margin-left:6px;">${p.label}:</span>
+        <input class="block-param" type="number" value="${b.params[p.id]}"
+          min="${p.min}" max="${p.max}" step="${p.step}"
+          onchange="updateParam(${idx},'${p.id}',this.value)">
+        <span class="block-unit">${p.unit}</span>`;
+    });
+
+    div.innerHTML = `
+      <span class="block-icon">${def.icon}</span>
+      <span class="block-label">${def.label}</span>
+      ${paramsHTML}
+      <button onclick="event.stopPropagation();removeBlock(${idx})"
+        ondragstart="event.stopPropagation();event.preventDefault();"
+        style="background:rgba(224,92,58,0.12);border:1px solid rgba(224,92,58,0.3);color:var(--red);
+               font-size:0.7rem;font-weight:700;cursor:pointer;padding:3px 8px;border-radius:5px;
+               margin-left:6px;font-family:var(--display);white-space:nowrap;">Remove</button>`;
+    canvas.appendChild(div);
+  });
+}
+
+function updateParam(idx, pid, val) { canvasBlocks[idx].params[pid] = parseFloat(val); }
+
+// ── Render toolkit ────────────────────────────────────────────────────────
+function renderToolkit() {
+  const grid = document.getElementById('toolkitGrid');
+  grid.innerHTML = '';
+  TOOLKIT_BLOCKS.forEach(type => {
+    const def  = BLOCK_DEFS[type];
+    const chip = document.createElement('div');
+    chip.className = 'tool-chip';
+    chip.draggable = true;
+    chip.innerHTML = `<span>${def.icon}</span><span>${def.label}</span>`;
+    chip.addEventListener('dragstart', e => { dragSrcIndex = type; dragSrcToolkit = true; });
+    chip.addEventListener('click', () => addFromToolkit(type));
+    grid.appendChild(chip);
+  });
+}
+
+function addFromToolkit(type) {
+  const def = BLOCK_DEFS[type];
+  const params = {};
+  (def.params || []).forEach(p => params[p.id] = p.default);
+  canvasBlocks.push({type, params});
+  renderCanvas();
+}
+
+// ── Drag & drop ───────────────────────────────────────────────────────────
+function onCanvasDragOver(e) {
+  e.preventDefault();
+  document.getElementById('blockCanvas').classList.add('drag-over');
+}
+function onCanvasDragLeave() { document.getElementById('blockCanvas').classList.remove('drag-over'); }
+function onCanvasDrop(e) {
+  e.preventDefault();
+  document.getElementById('blockCanvas').classList.remove('drag-over');
+  if (dragSrcToolkit) addFromToolkit(dragSrcIndex);
+}
+function onBlockDrop(targetIdx) {
+  if (dragSrcToolkit) {
+    const def = BLOCK_DEFS[dragSrcIndex];
+    const params = {};
+    (def.params || []).forEach(p => params[p.id] = p.default);
+    canvasBlocks.splice(targetIdx, 0, {type: dragSrcIndex, params});
+  } else if (dragSrcIndex !== null && dragSrcIndex !== targetIdx) {
+    const moved = canvasBlocks.splice(dragSrcIndex, 1)[0];
+    canvasBlocks.splice(targetIdx, 0, moved);
+  }
+  dragSrcIndex = null;
+  renderCanvas();
+}
+
+// ── Undo / bin ────────────────────────────────────────────────────────────
+function pushUndo(action, data) {
+  undoStack.push({action, ...data});
+  if (undoStack.length > 30) undoStack.shift();
+  updateUndoBtn();
+}
+function updateUndoBtn() {
+  const btn = document.getElementById('undoBtn');
+  const has = undoStack.length > 0;
+  btn.style.opacity       = has ? '1' : '0.4';
+  btn.style.pointerEvents = has ? 'auto' : 'none';
+  btn.style.borderColor   = has ? 'var(--blue)' : 'var(--border)';
+  btn.style.color         = has ? 'var(--blue)' : 'var(--muted)';
+}
+function undoAction() {
+  if (!undoStack.length) return;
+  const last = undoStack.pop();
+  if (last.action === 'remove') {
+    canvasBlocks.splice(last.idx, 0, last.block);
+    const bi = binBlocks.indexOf(last.block);
+    if (bi !== -1) binBlocks.splice(bi, 1);
+  } else if (last.action === 'clear') {
+    canvasBlocks.push(...last.blocks);
+    last.blocks.forEach(b => { const bi = binBlocks.indexOf(b); if(bi!==-1) binBlocks.splice(bi,1); });
+  }
+  renderCanvas(); renderBin(); updateUndoBtn();
+}
+function removeBlock(idx) {
+  const removed = canvasBlocks.splice(idx, 1)[0];
+  binBlocks.unshift(removed);
+  if (binBlocks.length > 20) binBlocks.pop();
+  pushUndo('remove', {idx, block: removed});
+  renderCanvas(); renderBin();
+}
+function clearCanvas() {
+  if (!canvasBlocks.length) return;
+  const snap = [...canvasBlocks];
+  binBlocks.unshift(...canvasBlocks);
+  if (binBlocks.length > 20) binBlocks.length = 20;
+  canvasBlocks = [];
+  pushUndo('clear', {blocks: snap});
+  renderCanvas(); renderBin();
+}
+function clearBin() { binBlocks.length = 0; renderBin(); }
+function restoreFromBin(i) {
+  canvasBlocks.push(binBlocks.splice(i, 1)[0]);
+  renderCanvas(); renderBin();
+}
+function renderBin() {
+  const area = document.getElementById('binArea');
+  const grid = document.getElementById('binGrid');
+  if (!binBlocks.length) { area.style.display = 'none'; return; }
+  area.style.display = 'block';
+  grid.innerHTML = '';
+  binBlocks.forEach((b, i) => {
+    const def  = BLOCK_DEFS[b.type];
+    const chip = document.createElement('div');
+    chip.className = 'bin-chip';
+    chip.innerHTML = `${def.icon} ${def.label}`;
+    chip.onclick   = () => restoreFromBin(i);
+    grid.appendChild(chip);
+  });
+}
+
+// ── Connect ───────────────────────────────────────────────────────────────
+function getRobotBase() { return 'http://' + document.getElementById('robotSelect').value + ':5000'; }
+function getWsUrl()     { return 'ws://'  + document.getElementById('robotSelect').value + ':5000/ws'; }
+
+async function toggleConnect() {
+  if (wsConnected) { if(ws){ws.close();ws=null;} return; }
+  const ip = document.getElementById('robotSelect').value;
+  if (!ip) { alert('Select a robot first!'); return; }
+  const btn = document.getElementById('connectBtn');
+  btn.className = 'btn-connect connecting';
+  document.getElementById('connectLabel').textContent = 'Connecting…';
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(getRobotBase() + '/ping', {signal: ctrl.signal});
+    if (!(await r.json()).ok) throw new Error();
+  } catch(e) {
+    btn.className = 'btn-connect error';
+    document.getElementById('connectLabel').textContent = 'Not found';
+    setStatus('error', '❌ Robot not found');
+    setTimeout(() => { btn.className='btn-connect'; document.getElementById('connectLabel').textContent='Connect'; }, 3000);
+    return;
+  }
+  ws = new WebSocket(getWsUrl());
+  ws.onopen = () => {
+    wsConnected = true;
+    btn.className = 'btn-connect connected';
+    document.getElementById('connectLabel').textContent = '● Connected';
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('', '✅ Ready — press Start Collecting!');
+    addLog('Connected', 'info');
+  };
+  ws.onmessage = e => { try { handleMsg(JSON.parse(e.data)); } catch(ex) {} };
+  ws.onclose   = () => {
+    wsConnected = false; robotRunning = false;
+    btn.className = 'btn-connect';
+    document.getElementById('connectLabel').textContent = 'Connect';
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('stopBtn').classList.remove('visible');
+    setStatus('', 'Connect your robot first');
+  };
+}
+
+// ── Message handler ───────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (msg.type === 'ping') return;
+  if (msg.type === 'status') {
+    if (msg.data === 'running') {
+      robotRunning = true;
+      startTimer();
+      document.getElementById('stopBtn').classList.add('visible');
+      setStatus('running', '🤖 Robot collecting…');
+    } else if (msg.data === 'idle' && !robotRunning) {
+      stopTimer();
+      document.getElementById('stopBtn').classList.remove('visible');
+      setStatus('', '✅ Done!');
+    } else if (msg.data === 'error') {
+      robotRunning = false;
+      stopTimer();
+      document.getElementById('stopBtn').classList.remove('visible');
+      setStatus('error', '❌ Error');
+    }
+  }
+  if (msg.type === 'log' && msg.data) {
+    const txt = msg.data;
+    if (txt.includes('COLLECTED')) {
+      _collected++;
+      _score += 10;
+      const total = parseInt(document.getElementById('garbageCount').value) || 3;
+      const remaining = Math.max(0, total - _collected);
+      document.getElementById('lsItems').textContent     = _collected;
+      document.getElementById('lsScore').textContent     = _score;
+      document.getElementById('lsRemaining').textContent = remaining;
+      addLog(`🎉 Garbage collected! +10 pts (${_collected}/${total})`, 'score');
+      celebrateRobot();
+      if (remaining === 0) {
+        _score += 5;
+        document.getElementById('lsScore').textContent = _score;
+        addLog('⭐ All garbage cleared! +5 bonus pts', 'score');
+        launchConfetti();
+      }
+    } else if (txt.includes('PUSH_TIMEOUT')) {
+      addLog('⚠️ Push timeout — resuming search', 'info');
+    } else if (txt.includes('LOST_GARBAGE')) {
+      addLog('📦 Lost contact — resuming search', 'info');
+    } else if (txt.includes('FALSE_BOUNDARY')) {
+      addLog('⚠️ False boundary — was too close to edge', 'info');
+    } else if (txt.includes('PUSH')) {
+      addLog('💨 Garbage found — pushing!', 'push');
+    } else if (txt.includes('COLLISION')) {
+      _collisions++;
+      _score = Math.max(0, _score - 2);
+      document.getElementById('lsColl').textContent = _collisions;
+      document.getElementById('lsScore').textContent = _score;
+      addLog('💥 Collision −2 pts', 'coll');
+    } else if (!txt.startsWith('[')) {
+      addLog(txt, 'info');
+    }
+  }
+}
+
+function celebrateRobot() {
+  // Send beep + LED flash via HTTP (non-blocking)
+  fetch(getRobotBase() + '/leds', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({binary:[1,1,1,1], rgb:[[0,100,0],[0,100,0],[0,100,0],[0,100,0]]})
+  });
+  fetch(getRobotBase() + '/speaker', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({sound: 2})
+  });
+  setTimeout(() => {
+    fetch(getRobotBase() + '/leds', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({binary:[0,0,0,0], rgb:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]]})
+    });
+    fetch(getRobotBase() + '/speaker', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({sound: 0})
+    });
+  }, 800);
+}
+
+// ── Timer ─────────────────────────────────────────────────────────────────
+function startTimer() {
+  _timerStart = Date.now();
+  document.getElementById('timerBox').style.display = 'block';
+  document.getElementById('timerBoxVal').style.color = 'var(--green)';
+  _timerInterval = setInterval(() => {
+    const sec = ((Date.now() - _timerStart) / 1000).toFixed(1);
+    document.getElementById('timerBoxVal').textContent = sec + 's';
+  }, 100);
+}
+function stopTimer() {
+  clearInterval(_timerInterval);
+  document.getElementById('timerBoxVal').style.color = 'var(--muted)';
+}
+
+// ── Send / stop ───────────────────────────────────────────────────────────
+async function sendProgram() {
+  if (!wsConnected || !canvasBlocks.length) return;
+  // Reset score counters
+  _score = 0; _collected = 0; _collisions = 0; _collCooldown = 0;
+  document.getElementById('lsScore').textContent     = '0';
+  document.getElementById('lsItems').textContent     = '0';
+  document.getElementById('lsColl').textContent      = '0';
+  const total = parseInt(document.getElementById('garbageCount').value) || 3;
+  document.getElementById('lsRemaining').textContent = total;
+
+  const code = PREAMBLE + generateCode();
+  try {
+    const res  = await fetch(getRobotBase() + '/run', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({code})
+    });
+    const data = await res.json();
+    if (data.ok) {
+      robotRunning = true;
+      document.getElementById('stopBtn').classList.add('visible');
+      setStatus('running', '🤖 Robot collecting…');
+      addLog('Program sent — go collect! 🗑', 'info');
+    } else {
+      setStatus('error', '❌ ' + data.error);
+    }
+  } catch(e) { setStatus('error', '❌ Send failed'); }
+}
+
+async function stopRobot() {
+  try {
+    await fetch(getRobotBase() + '/stop', {method:'POST'});
+    robotRunning = false; stopTimer();
+    document.getElementById('stopBtn').classList.remove('visible');
+    setStatus('', `⛔ Stopped — Score: ${_score} pts`);
+    addLog(`Stopped. Final score: ${_score} pts`, 'score');
+    fetch(getRobotBase() + '/leds', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({binary:[0,0,0,0],rgb:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]]})});
+  } catch(e) {}
+}
+
+// ── Code viewer ───────────────────────────────────────────────────────────
+function showCode() {
+  if (!canvasBlocks.length) { alert('Add some blocks first!'); return; }
+  const full = PREAMBLE + generateCode();
+  const hi   = full
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(#[^\n]*)/g,'<span style="color:var(--muted);font-style:italic;">$1</span>')
+    .replace(/\b(True|False|None|for|while|if|else|elif|in|not|and|or|break|return|import|from|range|def)\b/g,'<span style="color:#c084fc;">$1</span>')
+    .replace(/\b(left_motor|right_motor|robot|sensors|MAX_SPEED|timestep)\b/g,'<span style="color:var(--blue);">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g,'<span style="color:var(--amber);">$1</span>')
+    .replace(/'([^'\\]*)'/g,'<span style="color:var(--green);">\'$1\'</span>');
+  document.getElementById('codeDisplay').innerHTML = hi;
+  document.getElementById('codeSummary').textContent = `${canvasBlocks.length} blocks → ${full.split('\n').length} lines`;
+  const m = document.getElementById('codeModal');
+  m.style.display = 'flex';
+  m.onclick = e => { if(e.target===m) closeCode(); };
+}
+function closeCode() { document.getElementById('codeModal').style.display='none'; }
+function copyCode() {
+  navigator.clipboard.writeText(PREAMBLE + generateCode()).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent='✅ Copied!'; btn.style.color='var(--green)'; btn.style.borderColor='var(--green)';
+    setTimeout(()=>{btn.textContent='📋 Copy';btn.style.color='var(--blue)';btn.style.borderColor='var(--blue)';},2000);
+  });
+}
+
+// ── Confetti ──────────────────────────────────────────────────────────────
+function launchConfetti() {
+  const colors = ['#7ec850','#e8b84b','#4fa8c5','#e05c3a','#c084fc','#d4a017'];
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:9999;width:100%;height:100%;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+  const pieces = Array.from({length:120},()=>({
+    x:Math.random()*canvas.width, y:-20-Math.random()*200,
+    w:8+Math.random()*8, h:4+Math.random()*4,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    rot:Math.random()*Math.PI*2, vx:(Math.random()-0.5)*4,
+    vy:3+Math.random()*5, vr:(Math.random()-0.5)*0.2,
+  }));
+  let frame=0;
+  function draw() {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    pieces.forEach(p=>{
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle=p.color; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore();
+      p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; p.vy+=0.08;
+      if(p.y>canvas.height+20){p.y=-20;p.x=Math.random()*canvas.width;p.vy=3+Math.random()*4;}
+    });
+    frame++;
+    if(frame<600) requestAnimationFrame(draw); else canvas.remove();
+  }
+  draw();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function setStatus(type, text) {
+  const el = document.getElementById('statusLine');
+  el.className = 'status-line' + (type?' '+type:'');
+  document.getElementById('statusText').textContent = text;
+}
+function addLog(msg, type) {
+  const box = document.getElementById('logBox');
+  const d   = document.createElement('div');
+  d.className = type || 'info'; d.textContent = msg;
+  box.appendChild(d); box.scrollTop=box.scrollHeight;
+  while(box.children.length>40) box.removeChild(box.firstChild);
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='z') { e.preventDefault(); undoAction(); }
+  if (e.key==='Escape') closeCode();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+setLevel(1);
+</script>
+
+<script>
+function showHelp() { document.getElementById('helpModal').style.display = 'flex'; }
+function closeHelp() { document.getElementById('helpModal').style.display = 'none'; }
+function switchHelpTab(name, el) {
+  document.querySelectorAll('.htab-content').forEach(t => t.style.display = 'none');
+  document.getElementById('htab-' + name).style.display = 'block';
+  document.querySelectorAll('.htab').forEach(b => {
+    b.style.color = '#5a6650'; b.style.fontWeight = '600'; b.style.borderBottom = '3px solid transparent';
+  });
+  el.style.color = '#7ec850'; el.style.fontWeight = '700'; el.style.borderBottom = '3px solid #7ec850';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+</script>
+
+<!-- ── Help Modal ─────────────────────────────────────────────────────────── -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:1000;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto;">
+<div style="background:#fff;border-radius:16px;width:100%;max-width:840px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.6);font-family:'Segoe UI',Arial,sans-serif;color:#1a2010;">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#161a12,#0f110c);padding:16px 24px;display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Space Mono',monospace;font-size:0.95rem;font-weight:700;color:#7ec850;letter-spacing:0.1em;">📖 HELP &amp; DOCUMENTATION</div>
+    <div style="font-size:0.7rem;color:#5a6650;font-style:italic;">UNamur Robotics Lab — e-puck2 Garbage Collector</div>
+    <button onclick="closeHelp()" style="margin-left:auto;background:none;border:1px solid #2d3526;color:#5a6650;font-size:0.75rem;padding:5px 12px;border-radius:6px;cursor:pointer;">✕ Close</button>
+  </div>
+
+  <!-- Tabs -->
+  <div style="display:flex;border-bottom:2px solid #e8f0e0;background:#f5f9f0;">
+    <button class="htab" onclick="switchHelpTab('overview',this)"  style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:700;color:#7ec850;border-bottom:3px solid #7ec850;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🏠 Overview</button>
+    <button class="htab" onclick="switchHelpTab('interface',this)" style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:600;color:#5a6650;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🖥️ Interface</button>
+    <button class="htab" onclick="switchHelpTab('blocks',this)"    style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:600;color:#5a6650;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🧩 Blocks</button>
+    <button class="htab" onclick="switchHelpTab('arena',this)"     style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:600;color:#5a6650;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🏟️ Arena</button>
+    <button class="htab" onclick="switchHelpTab('scoring',this)"   style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:600;color:#5a6650;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🏆 Scoring</button>
+    <button class="htab" onclick="switchHelpTab('tips',this)"      style="padding:11px 18px;border:none;background:none;font-size:0.8rem;font-weight:600;color:#5a6650;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">💡 Tips</button>
+  </div>
+
+  <!-- Content -->
+  <div style="padding:26px;max-height:65vh;overflow-y:auto;line-height:1.75;font-size:0.87rem;">
+
+    <!-- OVERVIEW -->
+    <div id="htab-overview" class="htab-content">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:6px;">Welcome to the Garbage Collector! 🗑🤖</h2>
+      <p style="color:#7a8a6a;font-style:italic;margin-bottom:20px;">Bienvenue dans le Ramasseur de Déchets !</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px;">
+        <div style="background:#f0fae8;border-left:4px solid #7ec850;border-radius:8px;padding:14px;">
+          <div style="font-weight:700;margin-bottom:6px;">🇬🇧 English</div>
+          <p>In this activity, you will program a robot to autonomously collect garbage boxes scattered in an arena. The robot must wander, detect each box with its sensors, push it across the boundary line, and return to collect more — all without falling outside the arena itself!</p>
+          <p style="margin-top:8px;">The more boxes you collect and the fewer collisions you have, the higher your score.</p>
+        </div>
+        <div style="background:#fdf8ee;border-left:4px solid #d48f2a;border-radius:8px;padding:14px;">
+          <div style="font-weight:700;margin-bottom:6px;">🇫🇷 Français</div>
+          <p>Dans cette activité, vous allez programmer un robot pour collecter de manière autonome des boîtes dispersées dans une arène. Le robot doit errer, détecter chaque boîte avec ses capteurs, la pousser hors de la limite, puis revenir en chercher d'autres — sans sortir lui-même de l'arène !</p>
+          <p style="margin-top:8px;">Plus vous collectez de boîtes et moins vous avez de collisions, plus votre score est élevé.</p>
+        </div>
+      </div>
+
+      <div style="background:#f0fae8;border:1px solid #7ec850;border-radius:10px;padding:16px;margin-bottom:18px;">
+        <div style="font-weight:700;color:#3a6a1a;margin-bottom:8px;">⚡ Quick Start / Démarrage rapide</div>
+        <ol style="padding-left:20px;color:#2d4a1a;">
+          <li style="margin-bottom:4px;"><strong>Set the number of garbage items</strong> to match the arena / <em>Définissez le nombre de déchets</em> selon l'arène</li>
+          <li style="margin-bottom:4px;"><strong>Select your robot</strong> and click Connect / <em>Sélectionnez votre robot</em> et cliquez Connecter</li>
+          <li style="margin-bottom:4px;"><strong>Choose a Level</strong> — Explorer or Engineer / <em>Choisissez un niveau</em> — Explorer ou Engineer</li>
+          <li style="margin-bottom:4px;"><strong>Arrange and tune the blocks</strong> in the right order / <em>Arrangez et ajustez les blocs</em> dans le bon ordre</li>
+          <li style="margin-bottom:4px;"><strong>Press START COLLECTING</strong> and watch the robot work! / <em>Appuyez sur DÉMARRER</em> et regardez le robot travailler !</li>
+        </ol>
+      </div>
+
+      <div style="background:#fff3e8;border:1px solid #d48f2a;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#7a4a0a;margin-bottom:8px;">🔑 Key Concept / Concept clé</div>
+        <p>🇬🇧 The robot runs your blocks in a continuous loop. Every iteration it first checks the boundary (black tape), then executes your blocks in order. The loop never stops — it just keeps wandering and collecting until you press STOP.</p>
+        <p style="margin-top:6px;">🇫🇷 Le robot exécute vos blocs en boucle continue. À chaque itération, il vérifie d'abord la limite (ruban noir), puis exécute vos blocs dans l'ordre. La boucle ne s'arrête jamais — il continue d'errer et de collecter jusqu'à ce que vous appuyiez sur STOP.</p>
+      </div>
+    </div>
+
+    <!-- INTERFACE -->
+    <div id="htab-interface" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:16px;">🖥️ Interface Guide / Guide de l'interface</h2>
+
+      <div style="margin-bottom:20px;">
+        <div style="background:#7ec850;color:#000;font-weight:700;font-size:0.75rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">LEVEL BAR / BARRE DE NIVEAU</div>
+        <div style="border:1px solid #d8e8c8;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+            <div style="background:#f0fae8;border:2px solid #7ec850;border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:1.1rem;">🟢</div>
+              <div style="font-weight:700;color:#3a6a1a;">Explorer</div>
+              <div style="font-size:0.75rem;color:#5a6650;margin-top:4px;">Blocks are shuffled — put them in the right order then tune the numbers. / Les blocs sont mélangés — remettez-les dans le bon ordre puis ajustez les nombres.</div>
+            </div>
+            <div style="background:#fef0ec;border:2px solid #e05c3a;border-radius:8px;padding:12px;text-align:center;">
+              <div style="font-size:1.1rem;">🔴</div>
+              <div style="font-weight:700;color:#7a2a1a;">Engineer</div>
+              <div style="font-size:0.75rem;color:#5a6650;margin-top:4px;">Empty workspace — build your collector from scratch! / Espace vide — construisez votre collecteur de zéro !</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div style="background:#4fa8c5;color:#fff;font-weight:700;font-size:0.75rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">SCORE BAR / BARRE DE SCORE</div>
+        <div style="border:1px solid #d8e8c8;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <p>🇬🇧 Live counters visible at the top of the page while the robot runs:</p>
+          <p>🇫🇷 Compteurs en direct visibles en haut de la page pendant que le robot fonctionne :</p>
+          <ul style="padding-left:20px;margin-top:8px;">
+            <li style="margin-bottom:4px;"><strong>Score</strong> — current point total (+10 per collection, −2 per collision)</li>
+            <li style="margin-bottom:4px;"><strong>Collected</strong> — number of garbage boxes pushed out / <em>Nombre de boîtes évacuées</em></li>
+            <li style="margin-bottom:4px;"><strong>Remaining</strong> — boxes still in the arena / <em>Boîtes encore dans l'arène</em></li>
+            <li style="margin-bottom:4px;"><strong>Collisions</strong> — wall/boundary hits detected / <em>Collisions détectées</em></li>
+            <li style="margin-bottom:4px;"><strong>Timer</strong> — elapsed time since START COLLECTING / <em>Temps écoulé depuis le démarrage</em></li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div style="background:#d48f2a;color:#fff;font-weight:700;font-size:0.75rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">ARENA SETUP / CONFIGURATION DE L'ARÈNE</div>
+        <div style="border:1px solid #d8e8c8;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <p>🇬🇧 Before starting, set the <strong>number of garbage items</strong> in the right panel to match how many boxes you placed in the arena. This is used to track remaining items and award the bonus.</p>
+          <p style="margin-top:6px;">🇫🇷 Avant de démarrer, définissez le <strong>nombre de déchets</strong> dans le panneau droit pour correspondre au nombre de boîtes placées dans l'arène. Cela est utilisé pour suivre les éléments restants et attribuer le bonus.</p>
+        </div>
+      </div>
+
+      <div style="margin-bottom:20px;">
+        <div style="background:#3a6a1a;color:#fff;font-weight:700;font-size:0.75rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">WORKSPACE / ESPACE DE TRAVAIL</div>
+        <div style="border:1px solid #d8e8c8;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <ul style="padding-left:20px;">
+            <li style="margin-bottom:4px;"><strong>Drag blocks</strong> to reorder them / <em>Glissez les blocs</em> pour les réordonner</li>
+            <li style="margin-bottom:4px;"><strong>Click a number</strong> inside a block to edit its value / <em>Cliquez sur un nombre</em> pour modifier sa valeur</li>
+            <li style="margin-bottom:4px;"><strong>Remove</strong> a block with the Remove button — it goes to the recycle bin / <em>Supprimer</em> un bloc — il va dans la corbeille</li>
+            <li style="margin-bottom:4px;"><strong>Undo</strong> with ↩ or Ctrl+Z / <em>Annuler</em> avec ↩ ou Ctrl+Z</li>
+            <li style="margin-bottom:4px;"><strong>{ } Code</strong> — view the Python code your blocks generate / Voir le code Python généré</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- BLOCKS -->
+    <div id="htab-blocks" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:8px;">🧩 Block Reference / Référence des blocs</h2>
+      <p style="color:#7a8a6a;margin-bottom:18px;">🇬🇧 Blocks run in a continuous loop — order matters! / 🇫🇷 Les blocs s'exécutent en boucle continue — l'ordre est important !</p>
+
+      <!-- MOVE -->
+      <div style="font-weight:700;font-size:0.72rem;letter-spacing:0.12em;color:#4fa8c5;text-transform:uppercase;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #4fa8c5;">Move Blocks / Blocs de mouvement</div>
+
+      <div style="border:2px solid #eaf0f8;border-left:4px solid #4fa8c5;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">⚡</span>
+          <span style="font-weight:700;">Set Speed / Régler la vitesse</span>
+          <span style="margin-left:auto;background:#eaf5fc;color:#4fa8c5;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">spd (%)</span>
+        </div>
+        <p>🇬🇧 Sets the robot's base movement speed (10–100%). Place this block <strong>near the top</strong> of your program. Lower speed = more control, easier to detect garbage.<br><strong>Example:</strong> spd = 50 → half speed.</p>
+        <p style="margin-top:6px;">🇫🇷 Définit la vitesse de base du robot (10–100%). Placez ce bloc <strong>en haut</strong> de votre programme. Vitesse plus faible = plus de contrôle, détection plus facile.<br><strong>Exemple :</strong> spd = 50 → mi-vitesse.</p>
+      </div>
+
+      <div style="border:2px solid #eaf0f8;border-left:4px solid #4fa8c5;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🌀</span>
+          <span style="font-weight:700;">Random Wander / Errance aléatoire</span>
+          <span style="margin-left:auto;background:#eaf5fc;color:#4fa8c5;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">dur · turn% · turn ms</span>
+        </div>
+        <p>🇬🇧 Makes the robot move forward for <em>dur</em> seconds, then randomly turns with probability <em>turn%</em>. This is how the robot explores the arena. The boundary is checked on every step — the robot will back up and turn if it hits the edge.<br><strong>Parameters:</strong> dur = straight duration, turn_chance = probability of turning, turn_dur = how long the turn lasts.</p>
+        <p style="margin-top:6px;">🇫🇷 Fait avancer le robot pendant <em>dur</em> secondes, puis tourne aléatoirement avec une probabilité <em>turn%</em>. C'est ainsi que le robot explore l'arène. La limite est vérifiée à chaque pas — le robot reculera et tournera s'il touche le bord.</p>
+      </div>
+
+      <div style="border:2px solid #eaf0f8;border-left:4px solid #4fa8c5;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🔍</span>
+          <span style="font-weight:700;">Scan &amp; Approach / Scanner et approcher</span>
+          <span style="margin-left:auto;background:#eaf5fc;color:#4fa8c5;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">scan_thr · scan_spd · reposition · approach_spd</span>
+        </div>
+        <p>🇬🇧 A three-phase block: <strong>Phase 1</strong> — spins 360° slowly using the ToF sensor to find a box. <strong>Phase 2</strong> — approaches it with steering to stay centered. <strong>Phase 3</strong> — if nothing found, moves forward briefly to reposition. More advanced than wander alone.<br><strong>scan_thr:</strong> detection distance (cm). <strong>approach_spd:</strong> speed while approaching.</p>
+        <p style="margin-top:6px;">🇫🇷 Un bloc en trois phases : <strong>Phase 1</strong> — tourne à 360° lentement en utilisant le capteur ToF pour trouver une boîte. <strong>Phase 2</strong> — s'en approche avec direction pour rester centré. <strong>Phase 3</strong> — si rien trouvé, avance brièvement pour se repositionner.</p>
+      </div>
+
+      <!-- TURN -->
+      <div style="font-weight:700;font-size:0.72rem;letter-spacing:0.12em;color:#d48f2a;text-transform:uppercase;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #d48f2a;">Turn Blocks / Blocs de rotation</div>
+
+      <div style="border:2px solid #fdf5e8;border-left:4px solid #d48f2a;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">↰ ↱</span>
+          <span style="font-weight:700;">Turn Left / Right — Tourner gauche / droite</span>
+          <span style="margin-left:auto;background:#fdf5e8;color:#d48f2a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">deg (°)</span>
+        </div>
+        <p>🇬🇧 Rotates the robot by a fixed number of degrees. Useful to manually steer in Engineer mode.<br><strong>Example:</strong> deg = 90 → quarter turn.</p>
+        <p style="margin-top:6px;">🇫🇷 Fait pivoter le robot d'un nombre fixe de degrés. Utile pour diriger manuellement en mode Engineer.<br><strong>Exemple :</strong> deg = 90 → quart de tour.</p>
+      </div>
+
+      <!-- SENSE -->
+      <div style="font-weight:700;font-size:0.72rem;letter-spacing:0.12em;color:#7ec850;text-transform:uppercase;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #7ec850;">Sensor Blocks / Blocs capteurs</div>
+
+      <div style="border:2px solid #eaf8e0;border-left:4px solid #7ec850;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🚫</span>
+          <span style="font-weight:700;">Boundary Sensitivity / Sensibilité de limite</span>
+          <span style="margin-left:auto;background:#eaf8e0;color:#3a6a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">thr</span>
+        </div>
+        <p>🇬🇧 Sets the ground sensor threshold for detecting the black boundary tape. <strong>Lower value</strong> = robot must be more directly over the tape to react. <strong>Higher value</strong> = reacts from further away. Place this block at the very top.<br><strong>Default:</strong> 500. Increase if the robot ignores the boundary; decrease if it reacts too early.</p>
+        <p style="margin-top:6px;">🇫🇷 Définit le seuil du capteur de sol pour détecter le ruban noir de limite. Valeur plus basse = le robot doit être plus directement sur le ruban. Placez ce bloc tout en haut.</p>
+      </div>
+
+      <div style="border:2px solid #eaf8e0;border-left:4px solid #7ec850;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🚧</span>
+          <span style="font-weight:700;">If Obstacle → Turn Away / Si obstacle → tourner</span>
+          <span style="margin-left:auto;background:#eaf8e0;color:#3a6a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">thr</span>
+        </div>
+        <p>🇬🇧 When the front proximity sensors detect an obstacle above the threshold, the robot turns away. Only active when not already pushing.<br><strong>Example:</strong> thr = 150 → reacts to close objects.</p>
+        <p style="margin-top:6px;">🇫🇷 Quand les capteurs de proximité frontaux détectent un obstacle au-dessus du seuil, le robot s'en éloigne. Actif seulement quand il ne pousse pas.</p>
+      </div>
+
+      <div style="border:2px solid #eaf8e0;border-left:4px solid #7ec850;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">↔️</span>
+          <span style="font-weight:700;">Turn Toward Side Garbage / Tourner vers déchet latéral</span>
+          <span style="margin-left:auto;background:#eaf8e0;color:#3a6a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">thr</span>
+        </div>
+        <p>🇬🇧 Checks the left and right proximity sensors (ps2, ps5). If garbage is detected on the side, the robot turns to face it before approaching.<br><strong>Best used</strong> after wander and before find_garbage.</p>
+        <p style="margin-top:6px;">🇫🇷 Vérifie les capteurs gauche et droite (ps2, ps5). Si un déchet est détecté sur le côté, le robot tourne pour lui faire face avant d'approcher.</p>
+      </div>
+
+      <div style="border:2px solid #eaf8e0;border-left:4px solid #7ec850;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🎯</span>
+          <span style="font-weight:700;">Align to Garbage / Aligner sur le déchet</span>
+          <span style="margin-left:auto;background:#eaf8e0;color:#3a6a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">thr · align_thr</span>
+        </div>
+        <p>🇬🇧 When a garbage box is detected, makes micro-corrections to center the robot directly in front of it before pushing. Improves push accuracy.<br><strong>align_thr:</strong> how precise the centering needs to be (lower = more precise but slower).</p>
+        <p style="margin-top:6px;">🇫🇷 Quand une boîte est détectée, fait des micro-corrections pour centrer le robot directement devant elle avant de pousser. Améliore la précision du poussage.</p>
+      </div>
+
+      <!-- GARBAGE -->
+      <div style="font-weight:700;font-size:0.72rem;letter-spacing:0.12em;color:#e05c3a;text-transform:uppercase;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #e05c3a;">Garbage Blocks / Blocs déchet</div>
+
+      <div style="border:2px solid #fdf0ec;border-left:4px solid #e05c3a;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🗑</span>
+          <span style="font-weight:700;">If Garbage Found → Push / Si déchet trouvé → pousser</span>
+          <span style="margin-left:auto;background:#fdf0ec;color:#a03a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">thr · pushspd (%)</span>
+        </div>
+        <p>🇬🇧 Detects garbage using the <strong>4 front proximity sensors</strong> (ps0, ps1, ps6, ps7). When a box is found, activates push mode and drives forward while steering to stay centered on the box.<br><strong>thr:</strong> detection threshold. <strong>pushspd:</strong> speed while pushing.</p>
+        <p style="margin-top:6px;">🇫🇷 Détecte les déchets avec les <strong>4 capteurs de proximité frontaux</strong>. Quand une boîte est trouvée, active le mode poussée et avance en restant centré sur la boîte.<br><strong>thr :</strong> seuil de détection. <strong>pushspd :</strong> vitesse pendant la poussée.</p>
+      </div>
+
+      <div style="border:2px solid #fdf0ec;border-left:4px solid #e05c3a;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">💨</span>
+          <span style="font-weight:700;">Push Until Boundary / Pousser jusqu'à la limite</span>
+          <span style="margin-left:auto;background:#fdf0ec;color:#a03a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">timeout (s)</span>
+        </div>
+        <p>🇬🇧 Manages the push operation. Monitors the ground sensor and proximity sensors to determine when to stop pushing. Four outcomes:</p>
+        <ul style="padding-left:20px;margin-top:6px;">
+          <li><strong>COLLECTED</strong> — boundary reached after >1s → garbage pushed out! +10 pts</li>
+          <li><strong>FALSE_BOUNDARY</strong> — boundary reached too fast → robot was already near edge, backs up</li>
+          <li><strong>LOST_GARBAGE</strong> — box lost contact → resumes wandering</li>
+          <li><strong>PUSH_TIMEOUT</strong> — timeout reached → gives up and resumes wandering</li>
+        </ul>
+        <p style="margin-top:6px;">🇫🇷 Gère l'opération de poussée. Surveille les capteurs pour déterminer quand arrêter. <strong>timeout :</strong> durée maximale de poussée avant abandon.</p>
+      </div>
+
+      <!-- CELEBRATE & CONTROL -->
+      <div style="font-weight:700;font-size:0.72rem;letter-spacing:0.12em;color:#c084fc;text-transform:uppercase;margin:14px 0 8px;padding-bottom:4px;border-bottom:2px solid #c084fc;">Celebrate &amp; Control / Célébration et contrôle</div>
+
+      <div style="border:2px solid #f8f0ff;border-left:4px solid #c084fc;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🎉</span>
+          <span style="font-weight:700;">Celebrate + Score Point / Célébrer + point de score</span>
+        </div>
+        <p>🇬🇧 A placeholder block that marks where the score update happens. The actual celebration (LED flash + beep) is triggered automatically when the robot receives the COLLECTED message. Place this after push_out.<br>🇫🇷 Un bloc indicateur qui marque où la mise à jour du score se produit. La célébration réelle est déclenchée automatiquement quand le robot reçoit le message COLLECTED. Placez-le après push_out.</p>
+      </div>
+
+      <div style="border:2px solid #f8f8e8;border-left:4px solid #e8b84b;border-radius:8px;padding:13px;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
+          <span style="font-size:1.3rem;">🔁</span>
+          <span style="font-weight:700;">Repeat / Répéter</span>
+          <span style="margin-left:auto;background:#f8f8e8;color:#9a7a1a;font-size:0.68rem;font-weight:700;padding:2px 7px;border-radius:4px;">n (×)</span>
+        </div>
+        <p>🇬🇧 Repeats the loop iteration N extra times, effectively giving the robot more time steps before moving to the next block.<br>🇫🇷 Répète l'itération de boucle N fois supplémentaires, donnant au robot plus de pas de temps avant de passer au bloc suivant.</p>
+      </div>
+    </div>
+
+    <!-- ARENA -->
+    <div id="htab-arena" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:16px;">🏟️ The Arena / L'arène</h2>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+        <div>
+          <p>🇬🇧 The arena is a <strong>flat square area</strong> delimited by a black tape boundary on the floor. Garbage boxes are scattered randomly inside.</p>
+          <ul style="padding-left:20px;margin-top:8px;">
+            <li style="margin-bottom:4px;">The robot must stay <strong>inside</strong> the boundary</li>
+            <li style="margin-bottom:4px;">Garbage boxes must be pushed <strong>outside</strong> the boundary</li>
+            <li style="margin-bottom:4px;">The robot uses its <strong>ground sensor</strong> to detect the black tape</li>
+            <li style="margin-bottom:4px;">The robot uses its <strong>proximity sensors</strong> to detect boxes</li>
+          </ul>
+        </div>
+        <div>
+          <p>🇫🇷 L'arène est une <strong>zone carrée plane</strong> délimitée par un ruban noir au sol. Des boîtes sont dispersées aléatoirement à l'intérieur.</p>
+          <ul style="padding-left:20px;margin-top:8px;">
+            <li style="margin-bottom:4px;">Le robot doit rester <strong>à l'intérieur</strong> de la limite</li>
+            <li style="margin-bottom:4px;">Les boîtes doivent être poussées <strong>à l'extérieur</strong> de la limite</li>
+            <li style="margin-bottom:4px;">Le robot utilise son <strong>capteur de sol</strong> pour détecter le ruban noir</li>
+            <li style="margin-bottom:4px;">Le robot utilise ses <strong>capteurs de proximité</strong> pour détecter les boîtes</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Arena diagram -->
+      <div style="background:#161a12;border-radius:12px;padding:20px;margin-bottom:20px;font-family:'Space Mono',monospace;font-size:0.75rem;color:#d4dcc8;line-height:2;">
+        <div style="color:#5a6650;margin-bottom:8px;font-size:0.62rem;letter-spacing:0.1em;">TOP VIEW / VUE DU DESSUS</div>
+        <div style="color:#7ec850;">┌─────────────────────────────────────┐</div>
+        <div><span style="color:#7ec850;">│</span>   📦        📦       📦            <span style="color:#7ec850;">│</span></div>
+        <div><span style="color:#7ec850;">│</span>                                     <span style="color:#7ec850;">│</span></div>
+        <div><span style="color:#7ec850;">│</span>       🤖         📦               <span style="color:#7ec850;">│</span></div>
+        <div><span style="color:#7ec850;">│</span>                                     <span style="color:#7ec850;">│</span></div>
+        <div style="color:#7ec850;">└─────────────────────────────────────┘</div>
+        <div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;color:#d4dcc8;">
+          <span><span style="color:#7ec850;">┌─┐</span> = Black tape boundary / Limite ruban noir</span>
+          <span>📦 = Garbage box / Boîte déchet</span>
+          <span>🤖 = Robot start / Départ robot</span>
+        </div>
+      </div>
+
+      <div style="background:#fdf5e8;border:1px solid #d48f2a;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#7a4a0a;margin-bottom:8px;">⚠️ Important Rules / Règles importantes</div>
+        <ul style="padding-left:20px;color:#5a3000;">
+          <li style="margin-bottom:4px;">🇬🇧 If the robot itself crosses the boundary, it counts as a <strong>collision (−2 pts)</strong>.</li>
+          <li style="margin-bottom:4px;">🇫🇷 Si le robot lui-même sort de la limite, cela compte comme une <strong>collision (−2 pts)</strong>.</li>
+          <li style="margin-bottom:4px;">🇬🇧 Only garbage pushed <strong>across the boundary</strong> (not just touching the tape) counts as collected.</li>
+          <li style="margin-bottom:4px;">🇫🇷 Seuls les déchets poussés <strong>au-delà de la limite</strong> comptent comme collectés.</li>
+          <li style="margin-bottom:4px;">🇬🇧 Set the garbage count in the right panel to match the actual number of boxes in the arena.</li>
+          <li style="margin-bottom:4px;">🇫🇷 Définissez le nombre de déchets dans le panneau droit pour correspondre au nombre réel de boîtes.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- SCORING -->
+    <div id="htab-scoring" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:16px;">🏆 Scoring / Système de points</h2>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px;">
+        <div style="background:#f0fae8;border:2px solid #7ec850;border-radius:10px;padding:16px;text-align:center;">
+          <div style="font-size:1.8rem;font-weight:700;color:#3a6a1a;font-family:'Space Mono',monospace;">+10</div>
+          <div style="font-weight:700;color:#3a6a1a;margin-top:4px;">Per collection / Par collecte</div>
+          <div style="font-size:0.75rem;color:#5a6650;margin-top:6px;">🇬🇧 Each garbage box successfully pushed outside the boundary.<br>🇫🇷 Chaque boîte poussée hors de la limite.</div>
+        </div>
+        <div style="background:#fef8e8;border:2px solid #e8b84b;border-radius:10px;padding:16px;text-align:center;">
+          <div style="font-size:1.8rem;font-weight:700;color:#7a5a0a;font-family:'Space Mono',monospace;">+5</div>
+          <div style="font-weight:700;color:#7a5a0a;margin-top:4px;">Bonus / Bonus</div>
+          <div style="font-size:0.75rem;color:#5a6650;margin-top:6px;">🇬🇧 All garbage cleared! Confetti fires 🎉<br>🇫🇷 Tous les déchets collectés ! Confettis 🎉</div>
+        </div>
+        <div style="background:#fef0ec;border:2px solid #e05c3a;border-radius:10px;padding:16px;text-align:center;">
+          <div style="font-size:1.8rem;font-weight:700;color:#7a2a1a;font-family:'Space Mono',monospace;">−2</div>
+          <div style="font-weight:700;color:#7a2a1a;margin-top:4px;">Per collision / Par collision</div>
+          <div style="font-size:0.75rem;color:#5a6650;margin-top:6px;">🇬🇧 Robot crosses boundary while not pushing.<br>🇫🇷 Le robot sort de la limite sans pousser.</div>
+        </div>
+      </div>
+
+      <div style="background:#f5f9f0;border:1px solid #7ec850;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#3a6a1a;margin-bottom:8px;">📊 Score Formula / Formule de score</div>
+        <div style="background:#fff;border-radius:6px;padding:12px;font-family:'Space Mono',monospace;font-size:0.85rem;color:#1a2010;text-align:center;">
+          Score = (collections × 10) + bonus(5) − (collisions × 2)
+        </div>
+        <p style="margin-top:10px;">🇬🇧 <strong>Example:</strong> 3 boxes collected, 0 collisions = 3×10 + 5 = <strong>35 points</strong></p>
+        <p style="margin-top:4px;">🇫🇷 <strong>Exemple :</strong> 3 boîtes collectées, 0 collision = 3×10 + 5 = <strong>35 points</strong></p>
+      </div>
+
+      <div style="background:#fdf5e8;border:1px solid #d48f2a;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#7a4a0a;margin-bottom:8px;">📝 Log Messages / Messages du journal</div>
+        <ul style="padding-left:20px;">
+          <li style="margin-bottom:4px;"><strong style="color:#7ec850;">COLLECTED</strong> — garbage successfully pushed out (+10 pts) / déchet évacué avec succès</li>
+          <li style="margin-bottom:4px;"><strong style="color:#7ec850;">PUSH</strong> — garbage detected, pushing started / déchet détecté, poussée commencée</li>
+          <li style="margin-bottom:4px;"><strong style="color:#e8b84b;">LOST_GARBAGE</strong> — lost contact with box / contact perdu avec la boîte</li>
+          <li style="margin-bottom:4px;"><strong style="color:#e8b84b;">PUSH_TIMEOUT</strong> — gave up pushing / abandon de la poussée</li>
+          <li style="margin-bottom:4px;"><strong style="color:#e8b84b;">FALSE_BOUNDARY</strong> — boundary hit too quickly / limite atteinte trop vite</li>
+          <li style="margin-bottom:4px;"><strong style="color:#e05c3a;">COLLISION</strong> — robot crossed boundary (−2 pts) / robot hors limite</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- TIPS -->
+    <div id="htab-tips" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.15rem;color:#1a2010;margin-bottom:16px;">💡 Tips &amp; Tricks / Astuces</h2>
+
+      <div style="border:2px solid #7ec850;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#3a6a1a;margin-bottom:8px;">✅ Recommended Block Order / Ordre recommandé des blocs</div>
+        <div style="background:#f5f9f0;border-radius:8px;padding:12px;font-family:'Space Mono',monospace;font-size:0.78rem;color:#1a2010;line-height:2;">
+          <div>1. 🚫 <strong>Boundary Sensitivity</strong> — always first / toujours en premier</div>
+          <div>2. ⚡ <strong>Set Speed</strong> — set before moving / avant de bouger</div>
+          <div>3. 🌀 <strong>Random Wander</strong> — explore the arena / explorer l'arène</div>
+          <div>4. 🗑 <strong>If Garbage Found → Push</strong> — detect and push / détecter et pousser</div>
+          <div>5. 💨 <strong>Push Until Boundary</strong> — complete the push / terminer la poussée</div>
+          <div>6. 🎉 <strong>Celebrate</strong> — mark the score point / marquer le point</div>
+        </div>
+      </div>
+
+      <div style="border:2px solid #4fa8c5;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#1a5a7a;margin-bottom:8px;">🔍 Tuning Detection Thresholds / Régler les seuils de détection</div>
+        <p>🇬🇧 If the robot doesn't detect garbage: <strong>lower the thr value</strong> (more sensitive). If it detects false positives (reacts to walls): <strong>raise the thr value</strong>. Start with 150 and adjust.</p>
+        <p style="margin-top:6px;">🇫🇷 Si le robot ne détecte pas les déchets : <strong>baissez la valeur thr</strong> (plus sensible). S'il détecte des faux positifs : <strong>augmentez thr</strong>. Commencez avec 150 et ajustez.</p>
+      </div>
+
+      <div style="border:2px solid #d48f2a;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#7a4a0a;margin-bottom:8px;">⚡ Speed vs Detection / Vitesse contre détection</div>
+        <p>🇬🇧 A fast robot covers the arena quickly but may miss garbage or overshoot pushes. A slow robot detects better but takes longer. Start at <strong>50%</strong> and experiment.</p>
+        <p style="margin-top:6px;">🇫🇷 Un robot rapide couvre l'arène rapidement mais peut rater des déchets ou dépasser lors des poussées. Un robot lent détecte mieux mais prend plus de temps. Commencez à <strong>50%</strong> et expérimentez.</p>
+      </div>
+
+      <div style="border:2px solid #e05c3a;border-radius:10px;padding:14px;margin-bottom:14px;">
+        <div style="font-weight:700;color:#7a2a1a;margin-bottom:8px;">🚫 Avoiding Collisions / Éviter les collisions</div>
+        <p>🇬🇧 The boundary check runs automatically before your blocks every loop. If the robot still exits, try: <strong>raising boundary_sens thr</strong>, <strong>reducing speed</strong>, or <strong>increasing wander turn_chance</strong> so it changes direction more often.</p>
+        <p style="margin-top:6px;">🇫🇷 La vérification de la limite s'exécute automatiquement avant vos blocs à chaque boucle. Si le robot sort quand même, essayez : <strong>augmenter le seuil boundary_sens</strong>, <strong>réduire la vitesse</strong>, ou <strong>augmenter turn_chance</strong>.</p>
+      </div>
+
+      <div style="border:2px solid #c084fc;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#5a1a7a;margin-bottom:8px;">🔍 Advanced: Scan &amp; Approach / Avancé : Scanner et approcher</div>
+        <p>🇬🇧 Replace <strong>Random Wander</strong> with <strong>Scan &amp; Approach</strong> for a smarter robot. It uses the ToF sensor to actively search for boxes rather than wandering randomly. More efficient but harder to tune.</p>
+        <p style="margin-top:6px;">🇫🇷 Remplacez <strong>Errance aléatoire</strong> par <strong>Scanner et approcher</strong> pour un robot plus intelligent. Il utilise le capteur ToF pour rechercher activement des boîtes. Plus efficace mais plus difficile à régler.</p>
+      </div>
+    </div>
+
+  </div><!-- end content -->
+</div><!-- end modal inner -->
+</div><!-- end modal overlay -->
+</body>
+</html>

@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maze Challenge — e-puck2</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0d0f14;
+  --panel:    #13161d;
+  --panel2:   #1a1e28;
+  --border:   #2a2f3f;
+  --text:     #e8ecf4;
+  --muted:    #5a6380;
+  --green:    #39d98a;
+  --yellow:   #f5c842;
+  --red:      #f25c5c;
+  --blue:     #4d9fff;
+  --orange:   #ff8c42;
+  --display:  'Orbitron', sans-serif;
+  --body:     'Exo 2', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;}
+
+/* ── Header ── */
+header{
+  background:linear-gradient(135deg,#13161d 0%,#1a1e28 100%);
+  border-bottom:2px solid var(--border);
+  padding:14px 24px;
+  display:flex;align-items:center;gap:16px;
+  position:relative;overflow:hidden;
+}
+header::before{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,transparent,transparent 20px,rgba(77,159,255,0.02) 20px,rgba(77,159,255,0.02) 40px);
+}
+.logo{font-family:var(--display);font-size:1.3rem;font-weight:900;color:var(--blue);letter-spacing:0.1em;position:relative;}
+.logo span{color:var(--muted);font-weight:400;}
+.team-input{
+  margin-left:auto;background:var(--panel2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--body);font-weight:600;font-size:0.85rem;
+  padding:7px 14px;border-radius:20px;outline:none;width:160px;text-align:center;
+  position:relative;
+}
+.team-input:focus{border-color:var(--blue);}
+.team-input::placeholder{color:var(--muted);}
+
+/* ── Level bar ── */
+.level-bar{
+  background:var(--panel);border-bottom:1px solid var(--border);
+  padding:12px 24px;display:flex;align-items:center;gap:12px;
+}
+.level-label{font-family:var(--display);font-size:0.6rem;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase;white-space:nowrap;}
+.level-btns{display:flex;gap:8px;}
+.level-btn{
+  padding:7px 18px;border-radius:20px;border:2px solid var(--border);
+  background:var(--panel2);color:var(--muted);font-family:var(--body);
+  font-weight:700;font-size:0.78rem;cursor:pointer;transition:all 0.15s;
+  letter-spacing:0.06em;
+}
+.level-btn:hover{border-color:var(--text);color:var(--text);}
+.level-btn.active.l1{border-color:var(--green);color:var(--green);background:rgba(57,217,138,0.08);}
+.level-btn.active.l2{border-color:var(--yellow);color:var(--yellow);background:rgba(245,200,66,0.08);}
+.level-btn.active.l3{border-color:var(--red);color:var(--red);background:rgba(242,92,92,0.08);}
+.level-desc{margin-left:8px;font-size:0.72rem;color:var(--muted);font-style:italic;}
+
+/* ── Main layout ── */
+.main{display:grid;grid-template-columns:1fr 340px;gap:0;min-height:calc(100vh - 110px);}
+
+/* ── Left: workspace ── */
+.workspace{
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+}
+.ws-header{
+  padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+.ws-title{font-family:var(--display);font-size:0.75rem;font-weight:700;letter-spacing:0.1em;color:var(--text);}
+.ws-hint{margin-left:auto;font-size:0.65rem;color:var(--muted);font-style:italic;}
+
+/* ── Block canvas ── */
+.block-canvas{
+  flex:1;padding:20px;display:flex;flex-direction:column;gap:10px;
+  overflow-y:auto;background:var(--bg);
+  background-image:radial-gradient(var(--border) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+.block-canvas.dragging-over{background-color:rgba(77,159,255,0.04);}
+
+/* ── Block styles ── */
+.block{
+  border-radius:10px;border:2px solid var(--border);
+  background:var(--panel);padding:12px 16px;
+  display:flex;align-items:center;gap:10px;
+  cursor:grab;user-select:none;
+  transition:border-color 0.15s,transform 0.1s,box-shadow 0.15s;
+  position:relative;
+}
+.block:active{cursor:grabbing;transform:scale(0.98);}
+.block.dragging{opacity:0.4;}
+.block.locked{cursor:default;opacity:0.7;}
+.block-icon{font-size:1.2rem;flex-shrink:0;width:28px;text-align:center;}
+.block-label{font-weight:700;font-size:0.82rem;color:var(--text);flex:1;}
+.block-param{
+  background:var(--panel2);border:1px solid var(--border);
+  color:var(--blue);font-family:var(--display);font-size:0.78rem;font-weight:700;
+  padding:4px 8px;border-radius:6px;text-align:center;min-width:52px;outline:none;
+  cursor:pointer;
+}
+.block-param:focus{border-color:var(--blue);}
+.block-param.locked-val{pointer-events:none;color:var(--muted);}
+.block-unit{font-size:0.68rem;color:var(--muted);flex-shrink:0;}
+
+/* Block type colors */
+.block.move   {border-left:4px solid var(--blue);}
+.block.turn   {border-left:4px solid var(--orange);}
+.block.sense  {border-left:4px solid var(--green);}
+.block.control{border-left:4px solid var(--yellow);}
+.block.goal   {border-left:4px solid #c084fc;}
+
+/* ── Toolkit ── */
+.toolkit{
+  padding:16px;background:var(--panel);border-top:1px solid var(--border);
+}
+.toolkit-title{font-family:var(--display);font-size:0.62rem;color:var(--muted);letter-spacing:0.15em;margin-bottom:10px;}
+.toolkit-grid{display:flex;flex-wrap:wrap;gap:8px;}
+.tool-chip{
+  background:var(--panel2);border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:0.72rem;font-weight:600;
+  color:var(--text);cursor:grab;user-select:none;
+  display:flex;align-items:center;gap:6px;
+  transition:border-color 0.15s,transform 0.1s;
+}
+.tool-chip:hover{border-color:var(--blue);transform:translateY(-1px);}
+.tool-chip:active{cursor:grabbing;transform:scale(0.95);}
+.tool-chip.hidden{display:none;}
+
+/* ── Right panel ── */
+.right-panel{display:flex;flex-direction:column;}
+
+/* ── Connect ── */
+.connect-section{
+  padding:16px;background:var(--panel);border-bottom:1px solid var(--border);
+}
+.section-title{font-family:var(--display);font-size:0.62rem;color:var(--muted);letter-spacing:0.15em;margin-bottom:10px;text-transform:uppercase;}
+.robot-select{
+  width:100%;background:var(--panel2);border:1px solid var(--border);
+  color:var(--text);font-family:var(--body);font-size:0.82rem;
+  padding:8px 12px;border-radius:8px;outline:none;margin-bottom:8px;
+}
+.robot-select:focus{border-color:var(--blue);}
+.btn-connect{
+  width:100%;padding:9px;border-radius:8px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-family:var(--body);
+  font-weight:700;font-size:0.82rem;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:all 0.15s;
+}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.3s;}
+.btn-connect.connected{border-color:var(--green);color:var(--green);background:rgba(57,217,138,0.08);}
+.btn-connect.connected .conn-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
+.btn-connect.connecting{border-color:var(--yellow);color:var(--yellow);}
+.btn-connect.error{border-color:var(--red);color:var(--red);}
+
+/* ── Launch ── */
+.launch-section{padding:16px;background:var(--panel);border-bottom:1px solid var(--border);}
+.btn-send{
+  width:100%;padding:14px;border-radius:10px;border:none;
+  background:var(--green);color:#000;font-family:var(--display);
+  font-weight:700;font-size:1rem;letter-spacing:0.08em;
+  cursor:pointer;transition:all 0.15s;margin-bottom:8px;
+}
+.btn-send:hover{opacity:0.9;}
+.btn-send:disabled{opacity:0.3;pointer-events:none;}
+.btn-stop{
+  width:100%;padding:10px;border-radius:10px;border:2px solid var(--red);
+  background:rgba(242,92,92,0.1);color:var(--red);font-family:var(--display);
+  font-weight:700;font-size:0.85rem;letter-spacing:0.08em;
+  cursor:pointer;display:none;
+}
+.btn-stop.visible{display:block;}
+.status-line{
+  margin-top:8px;font-size:0.7rem;color:var(--muted);
+  display:flex;align-items:center;gap:6px;
+}
+.status-dot2{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+.status-line.running{color:var(--green);}
+.status-line.running .status-dot2{background:var(--green);}
+.status-line.error{color:var(--red);}
+.status-line.error .status-dot2{background:var(--red);}
+
+/* ── Log ── */
+.log-section{padding:16px;flex:1;display:flex;flex-direction:column;gap:6px;}
+.log-box{
+  flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:10px;font-family:'Courier New',monospace;font-size:0.65rem;
+  color:var(--muted);max-height:200px;overflow-y:auto;line-height:1.8;
+}
+.log-goal{color:#c084fc;font-weight:bold;}
+.log-info{color:var(--text);}
+.log-warn{color:var(--red);}
+
+/* ── Approach selector ── */
+.approach-section{padding:16px;background:var(--panel);border-bottom:1px solid var(--border);}
+.approach-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.approach-btn{
+  padding:10px 8px;border-radius:8px;border:2px solid var(--border);
+  background:var(--panel2);color:var(--muted);font-family:var(--body);
+  font-weight:700;font-size:0.75rem;cursor:pointer;transition:all 0.15s;
+  text-align:center;line-height:1.4;
+}
+.approach-btn:hover{border-color:var(--text);color:var(--text);}
+.approach-btn.selected{border-color:var(--blue);color:var(--blue);background:rgba(77,159,255,0.08);}
+.approach-icon{font-size:1.2rem;display:block;margin-bottom:4px;}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* ── Drag placeholder ── */
+.drop-placeholder{
+  border:2px dashed var(--border);border-radius:10px;height:52px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.68rem;color:var(--muted);transition:border-color 0.15s;
+}
+.drop-placeholder.active{border-color:var(--blue);color:var(--blue);}
+</style>
+</head>
+<body>
+
+<header style="position:relative;">
+  <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="22" r="13" fill="#1a2040" stroke="#4d9fff" stroke-width="1.5"/>
+    <circle cx="15" cy="18" r="3" fill="#4d9fff"/>
+    <circle cx="25" cy="18" r="3" fill="#4d9fff"/>
+    <rect x="15" y="25" width="10" height="2.5" rx="1.25" fill="#4d9fff" opacity=".6"/>
+    <rect x="18" y="7" width="4" height="6" rx="2" fill="#2a2f3f" stroke="#4d9fff" stroke-width="1"/>
+  </svg>
+  <div class="logo">MAZE <span>/ challenge</span></div>
+  <div style="position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;">
+    <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;
+                color:#e3b341;letter-spacing:0.06em;line-height:1.2;">
+      UNamur Robotics Lab
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#d4a017;
+                letter-spacing:0.14em;text-transform:uppercase;">
+      University of Namur
+    </div>
+  </div>
+  <input class="team-input" id="teamName" type="text" placeholder="Team name…" maxlength="20">
+</header>
+
+<!-- Level bar -->
+<div class="level-bar">
+  <div class="level-label">Level:</div>
+  <div class="level-btns">
+    <button class="level-btn l1 active" onclick="setLevel(1)">🟢 Explorer</button>
+    <button class="level-btn l2" onclick="setLevel(2)">🟡 Navigator</button>
+    <button class="level-btn l3" onclick="setLevel(3)">🔴 Engineer</button>
+  </div>
+  <div class="level-desc" id="levelDesc">Blocks are arranged — tune the numbers to solve the maze</div>
+</div>
+
+<div class="main">
+
+  <!-- Left: block workspace -->
+  <div class="workspace">
+    <div class="ws-header">
+      <div class="ws-title">PROGRAM</div>
+      <div style="margin-left:auto;display:flex;gap:6px;align-items:center;">
+        <button id="undoBtn" onclick="undoAction()" title="Undo (Ctrl+Z)"
+          style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--body);font-size:0.68rem;padding:4px 10px;border-radius:6px;cursor:pointer;opacity:0.4;pointer-events:none;">↩ Undo</button>
+        <button onclick="showCode()"
+          style="background:rgba(77,159,255,0.1);border:1px solid var(--blue);color:var(--blue);font-family:var(--body);font-size:0.68rem;padding:4px 10px;border-radius:6px;cursor:pointer;">{ } View Code</button>
+        <button onclick="showHelp()"
+          style="background:rgba(57,217,138,0.1);border:1px solid var(--green);color:var(--green);font-family:var(--body);font-size:0.68rem;padding:4px 10px;border-radius:6px;cursor:pointer;">📖 Help</button>
+        <button onclick="clearCanvas()"
+          style="background:none;border:1px solid var(--red);color:var(--red);font-family:var(--body);font-size:0.68rem;padding:4px 10px;border-radius:6px;cursor:pointer;">🗑 Clear all</button>
+      </div>
+      <div class="ws-hint" id="wsHint">Change the numbers in the blocks</div>
+    </div>
+
+    <div class="block-canvas" id="blockCanvas"
+      ondragover="onCanvasDragOver(event)"
+      ondrop="onCanvasDrop(event)"
+      ondragleave="onCanvasDragLeave(event)">
+      <div class="drop-placeholder" id="dropHint">Drop blocks here to build your program</div>
+    </div>
+
+    <!-- Toolkit (hidden at level 1) -->
+    <div class="toolkit" id="toolkit">
+      <div class="toolkit-title">Available blocks — drag to program</div>
+      <div class="toolkit-grid" id="toolkitGrid"></div>
+    </div>
+
+    <!-- Recycle bin -->
+    <div id="recycleBin" style="display:none;padding:10px 16px;background:rgba(242,92,92,0.05);border-top:1px solid rgba(242,92,92,0.2);">
+      <div style="font-size:0.58rem;color:var(--red);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+        🗑 Recycle bin
+        <span style="color:var(--muted);font-size:0.55rem;font-style:italic;">— drag back or click to restore</span>
+        <button onclick="clearBin()" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:0.62rem;cursor:pointer;">empty</button>
+      </div>
+      <div id="binGrid" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    </div>
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+
+    <!-- Approach selector -->
+    <div class="approach-section">
+      <div class="section-title">Strategy</div>
+      <div class="approach-btns">
+        <button class="approach-btn selected" id="ap-blind" onclick="setApproach('blind')">
+          <span class="approach-icon">📋</span>
+          Blind Sequence<br><small style="font-weight:400;color:var(--muted)">Fixed moves</small>
+        </button>
+        <button class="approach-btn" id="ap-reactive" onclick="setApproach('reactive')">
+          <span class="approach-icon">🧠</span>
+          Reactive<br><small style="font-weight:400;color:var(--muted)">Sensor-based</small>
+        </button>
+      </div>
+    </div>
+
+    <!-- Connect -->
+    <div class="connect-section">
+      <div class="section-title">Robot</div>
+      <select class="robot-select" id="robotSelect">
+        <option value="">— select robot —</option>
+        <option value="192.168.0.111">🤖 Robot1-111</option>
+        <option value="192.168.0.113">🤖 Robot2-113</option>
+        <option value="192.168.0.114">🤖 Robot3-114</option>
+        <option value="192.168.0.115">🤖 Robot4-115</option>
+        <option value="192.168.0.118">🤖 Robot5-118</option>
+        <option value="192.168.0.121">🤖 Robot6-121</option>
+        <option value="192.168.0.124">🤖 Robot7-124</option>
+      </select>
+      <button class="btn-connect" id="connectBtn" onclick="toggleConnect()">
+        <div class="conn-dot"></div>
+        <span id="connectLabel">Connect</span>
+      </button>
+    </div>
+
+    <!-- Launch -->
+    <div class="launch-section">
+      <button class="btn-send" id="sendBtn" onclick="sendProgram()" disabled>▶ RUN MAZE</button>
+      <button class="btn-stop" id="stopBtn" onclick="stopRobot()">⛔ STOP</button>
+
+      <!-- Live timer -->
+      <div id="timerBox" style="display:none;margin-top:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;text-align:center;">
+        <div style="font-size:0.55rem;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px;">Elapsed time</div>
+        <div id="timerDisplay" style="font-family:var(--display);font-size:2.4rem;font-weight:900;color:var(--green);letter-spacing:0.06em;line-height:1;">0.0s</div>
+        <div style="font-size:0.6rem;color:var(--muted);margin-top:4px;">Use this to calibrate your forward durations</div>
+      </div>
+
+      <div class="status-line" id="statusLine">
+        <div class="status-dot2"></div>
+        <span id="statusText">Connect your robot first</span>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="log-section">
+      <div class="section-title" style="display:flex;justify-content:space-between;">
+        Log
+        <button onclick="document.getElementById('logBox').innerHTML=''" style="background:none;border:none;color:var(--muted);font-size:0.65rem;cursor:pointer;">clear</button>
+      </div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let ws = null, wsConnected = false, robotRunning = false;
+let _timerInterval = null;
+let _timerStart    = 0;
+
+function startRunTimer() {
+  _timerStart = Date.now();
+  document.getElementById('timerBox').style.display = 'block';
+  document.getElementById('timerDisplay').style.color = 'var(--green)';
+  _timerInterval = setInterval(() => {
+    const sec = ((Date.now() - _timerStart) / 1000).toFixed(1);
+    document.getElementById('timerDisplay').textContent = sec + 's';
+  }, 100);
+}
+
+function stopRunTimer() {
+  clearInterval(_timerInterval);
+  _timerInterval = null;
+  document.getElementById('timerDisplay').style.color = 'var(--muted)';
+}
+let currentLevel    = 1;
+let currentApproach = 'blind';
+let dragSrcIndex    = null;
+let dragSrcToolkit  = false;
+
+// ── Block definitions ─────────────────────────────────────────────────────
+const BLOCK_DEFS = {
+  forward:     { icon:'⬆️',  label:'Move forward', params:[{id:'dur', label:'', unit:'sec', min:0.1, max:10, step:0.1, default:1}],    type:'move',    approach:'blind'    },
+  turn_left:   { icon:'↰',   label:'Turn left',     params:[{id:'deg', label:'', unit:'°',   min:10,  max:360,step:10,  default:90}],    type:'turn',    approach:'blind'    },
+  turn_right:  { icon:'↱',   label:'Turn right',    params:[{id:'deg', label:'', unit:'°',   min:10,  max:360,step:10,  default:90}],    type:'turn',    approach:'blind'    },
+  set_speed:   { icon:'⚡',   label:'Set speed',     params:[{id:'spd', label:'', unit:'%',   min:10,  max:100,step:5,   default:50}],    type:'move',    approach:'both'     },
+  repeat:      { icon:'🔁',   label:'Repeat',        params:[{id:'n',   label:'', unit:'×',   min:1,   max:10, step:1,   default:2}],     type:'control', approach:'blind'    },
+  braitenberg: { icon:'🧠',   label:'Braitenberg avoid', params:[{id:'sens',label:'sensitivity',unit:'', min:0.5,max:5,  step:0.5, default:1.5}], type:'sense', approach:'reactive' },
+  if_obstacle: { icon:'🚧',   label:'If obstacle → turn away', params:[{id:'thr', label:'threshold', unit:'', min:100,max:1000,step:50,default:500}], type:'sense', approach:'reactive' },
+  if_goal:     { icon:'🎯',   label:'If on goal → stop', params:[{id:'thr', label:'threshold', unit:'', min:100,max:900,step:50,default:500}], type:'goal',  approach:'both'     },
+};
+
+// ── Canvas blocks (program) ───────────────────────────────────────────────
+let canvasBlocks = []; // [{type, params:{id:val}, locked}]
+
+// ── Level presets ─────────────────────────────────────────────────────────
+const LEVEL_PRESETS = {
+  blind: {
+    1: [ // Pre-arranged, tune only
+      {type:'set_speed',   params:{spd:50},  locked:false},
+      {type:'forward',     params:{dur:2},   locked:false},
+      {type:'turn_right',  params:{deg:90},  locked:false},
+      {type:'forward',     params:{dur:1},   locked:false},
+      {type:'turn_left',   params:{deg:90},  locked:false},
+      {type:'forward',     params:{dur:2},   locked:false},
+      {type:'turn_right',  params:{deg:90},  locked:false},
+      {type:'forward',     params:{dur:1.5}, locked:false},
+      {type:'if_goal',     params:{thr:500}, locked:false},
+    ],
+    2: [ // Shuffled — need to arrange
+      {type:'forward',    params:{dur:1.5}, locked:false},
+      {type:'if_goal',    params:{thr:500}, locked:false},
+      {type:'set_speed',  params:{spd:50},  locked:false},
+      {type:'turn_left',  params:{deg:90},  locked:false},
+      {type:'forward',    params:{dur:2},   locked:false},
+      {type:'turn_right', params:{deg:90},  locked:false},
+      {type:'forward',    params:{dur:1},   locked:false},
+      {type:'turn_right', params:{deg:90},  locked:false},
+      {type:'forward',    params:{dur:2},   locked:false},
+    ],
+    3: [], // Empty — build from scratch
+  },
+  reactive: {
+    1: [ // Pre-arranged, tune only
+      {type:'set_speed',   params:{spd:50},  locked:false},
+      {type:'braitenberg', params:{sens:1.5}, locked:false},
+      {type:'if_goal',     params:{thr:500}, locked:false},
+    ],
+    2: [ // Shuffled
+      {type:'if_goal',     params:{thr:500}, locked:false},
+      {type:'set_speed',   params:{spd:50},  locked:false},
+      {type:'braitenberg', params:{sens:1.5}, locked:false},
+    ],
+    3: [], // Empty
+  },
+};
+
+// ── Toolkit availability per level ────────────────────────────────────────
+const TOOLKIT_AVAILABLE = {
+  blind:    { 1: ['forward','turn_left','turn_right','set_speed','repeat','if_goal'], 2: ['forward','turn_left','turn_right','set_speed','repeat','if_goal'], 3: ['forward','turn_left','turn_right','set_speed','repeat','if_goal'] },
+  reactive: { 1: ['set_speed','braitenberg','if_obstacle','if_goal'],                 2: ['set_speed','braitenberg','if_obstacle','if_goal'],                  3: ['set_speed','braitenberg','if_obstacle','if_goal'] },
+};
+
+// ── Level / approach setup ────────────────────────────────────────────────
+const LEVEL_DESCS = {
+  1: 'Blocks are pre-arranged — tune the numbers, or add/remove blocks from the toolkit below',
+  2: 'Blocks are shuffled — arrange them in the right order and tune the numbers',
+  3: 'Empty workspace — build your program from scratch using the toolkit',
+};
+
+function setLevel(n) {
+  currentLevel = n;
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.level-btn.l' + n).classList.add('active');
+  document.getElementById('levelDesc').textContent = LEVEL_DESCS[n];
+  document.getElementById('wsHint').textContent = n === 1 ? 'Tune numbers · add or remove blocks from toolkit below' : n === 2 ? 'Drag blocks into the right order, then tune numbers' : 'Drag blocks from the toolkit below to build your program';
+  loadPreset();
+}
+
+function setApproach(ap) {
+  currentApproach = ap;
+  document.getElementById('ap-blind').classList.toggle('selected',    ap === 'blind');
+  document.getElementById('ap-reactive').classList.toggle('selected', ap === 'reactive');
+  loadPreset();
+}
+
+function loadPreset() {
+  const preset = LEVEL_PRESETS[currentApproach][currentLevel];
+  canvasBlocks  = preset.map(b => ({...b, params:{...b.params}}));
+  renderCanvas();
+  renderToolkit();
+}
+
+// ── Render canvas ─────────────────────────────────────────────────────────
+function renderCanvas() {
+  const canvas = document.getElementById('blockCanvas');
+  canvas.innerHTML = '';
+
+  if (canvasBlocks.length === 0) {
+    canvas.innerHTML = '<div class="drop-placeholder" id="dropHint">Drop blocks here to build your program</div>';
+    return;
+  }
+
+  canvasBlocks.forEach((b, idx) => {
+    const def = BLOCK_DEFS[b.type];
+    const div = document.createElement('div');
+    div.className = 'block ' + def.type + '  ';
+    div.draggable = true;
+    div.dataset.index = idx;
+    div.addEventListener('dragstart', e => { dragSrcIndex = idx; dragSrcToolkit = false; div.classList.add('dragging'); });
+    div.addEventListener('dragend',   e => { div.classList.remove('dragging'); });
+    div.addEventListener('dragover',  e => { e.preventDefault(); });
+    div.addEventListener('drop',      e => { e.preventDefault(); onBlockDrop(idx); });
+
+    let paramsHTML = '';
+    def.params.forEach(p => {
+      const val = b.params[p.id];
+      if (false) {
+        paramsHTML += `<span class="block-param locked-val">${val}</span><span class="block-unit">${p.unit}</span>`;
+      } else {
+        paramsHTML += `<input class="block-param" type="number" value="${val}" min="${p.min}" max="${p.max}" step="${p.step}"
+          title="${p.label}" onchange="updateBlockParam(${idx},'${p.id}',this.value)"
+          ondragstart="event.stopPropagation();event.preventDefault();"
+          onclick="event.stopPropagation();">
+          <span class="block-unit">${p.unit}</span>`;
+      }
+    });
+
+    div.innerHTML = `
+      <span class="block-icon">${def.icon}</span>
+      <span class="block-label">${def.label}</span>
+      ${paramsHTML}
+      <button onclick="event.stopPropagation(); removeBlock(${idx})" ondragstart="event.stopPropagation(); event.preventDefault();" style="background:rgba(242,92,92,0.12);border:1px solid rgba(242,92,92,0.3);color:var(--red);font-size:0.72rem;font-weight:700;cursor:pointer;padding:4px 10px;border-radius:6px;margin-left:6px;white-space:nowrap;font-family:var(--body);">🗑 Remove</button>
+    `;
+    canvas.appendChild(div);
+  });
+}
+
+function updateBlockParam(idx, pid, val) {
+  canvasBlocks[idx].params[pid] = parseFloat(val);
+}
+
+// ── Undo / recycle bin ────────────────────────────────────────────────────
+const undoStack = [];   // [{action:'remove'|'clear', blocks, idx}]
+const binBlocks = [];   // deleted blocks available to restore
+
+function pushUndo(action, data) {
+  undoStack.push({action, ...data});
+  if (undoStack.length > 30) undoStack.shift();
+  updateUndoBtn();
+}
+
+function updateUndoBtn() {
+  const btn = document.getElementById('undoBtn');
+  if (undoStack.length > 0) {
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+    btn.style.borderColor = 'var(--blue)';
+    btn.style.color = 'var(--blue)';
+  } else {
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+    btn.style.borderColor = 'var(--border)';
+    btn.style.color = 'var(--muted)';
+  }
+}
+
+function undoAction() {
+  if (undoStack.length === 0) return;
+  const last = undoStack.pop();
+  if (last.action === 'remove') {
+    // Restore block to its original position
+    canvasBlocks.splice(last.idx, 0, last.block);
+    // Remove from bin
+    const binIdx = binBlocks.findIndex(b => b === last.block);
+    if (binIdx !== -1) binBlocks.splice(binIdx, 1);
+  } else if (last.action === 'clear') {
+    canvasBlocks.push(...last.blocks);
+    last.blocks.forEach(b => {
+      const binIdx = binBlocks.findIndex(x => x === b);
+      if (binIdx !== -1) binBlocks.splice(binIdx, 1);
+    });
+  }
+  renderCanvas();
+  renderBin();
+  updateUndoBtn();
+}
+
+function removeBlock(idx) {
+  const removed = canvasBlocks.splice(idx, 1)[0];
+  binBlocks.unshift(removed);
+  if (binBlocks.length > 20) binBlocks.pop();
+  pushUndo('remove', {idx, block: removed});
+  renderCanvas();
+  renderBin();
+}
+
+function clearCanvas() {
+  if (canvasBlocks.length === 0) return;
+  const snapshot = [...canvasBlocks];
+  binBlocks.unshift(...canvasBlocks);
+  if (binBlocks.length > 20) binBlocks.length = 20;
+  canvasBlocks = [];
+  pushUndo('clear', {blocks: snapshot});
+  renderCanvas();
+  renderBin();
+}
+
+function clearBin() {
+  binBlocks.length = 0;
+  renderBin();
+}
+
+function restoreFromBin(binIdx) {
+  const block = binBlocks.splice(binIdx, 1)[0];
+  canvasBlocks.push(block);
+  renderCanvas();
+  renderBin();
+}
+
+function renderBin() {
+  const bin  = document.getElementById('recycleBin');
+  const grid = document.getElementById('binGrid');
+  if (binBlocks.length === 0) { bin.style.display = 'none'; return; }
+  bin.style.display = 'block';
+  grid.innerHTML = '';
+  binBlocks.forEach((b, i) => {
+    const def  = BLOCK_DEFS[b.type];
+    const chip = document.createElement('div');
+    chip.style.cssText = 'background:var(--panel2);border:1px solid rgba(242,92,92,0.3);border-radius:6px;padding:5px 10px;font-size:0.7rem;font-weight:600;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:5px;';
+    chip.innerHTML = `<span>${def.icon}</span><span>${def.label}</span>`;
+    chip.title = 'Click to restore';
+    chip.onclick = () => restoreFromBin(i);
+    grid.appendChild(chip);
+  });
+}
+
+// Keyboard shortcut Ctrl+Z
+
+
+// ── Render toolkit ────────────────────────────────────────────────────────
+function renderToolkit() {
+  const available = TOOLKIT_AVAILABLE[currentApproach][currentLevel];
+  const grid = document.getElementById('toolkitGrid');
+  const tk   = document.getElementById('toolkit');
+  grid.innerHTML = '';
+  tk.style.display = 'block';
+  if (available.length === 0) { grid.innerHTML = '<div style="color:var(--muted);font-size:0.72rem;">No additional blocks for this level</div>'; return; }
+  available.forEach(type => {
+    const def  = BLOCK_DEFS[type];
+    const chip = document.createElement('div');
+    chip.className = 'tool-chip';
+    chip.draggable = true;
+    chip.innerHTML = `<span>${def.icon}</span><span>${def.label}</span>`;
+    chip.addEventListener('dragstart', e => { dragSrcIndex = type; dragSrcToolkit = true; });
+    chip.addEventListener('click', () => addBlockFromToolkit(type));
+    grid.appendChild(chip);
+  });
+}
+
+function addBlockFromToolkit(type) {
+  const def    = BLOCK_DEFS[type];
+  const params = {};
+  def.params.forEach(p => params[p.id] = p.default);
+  canvasBlocks.push({type, params, locked:false});
+  renderCanvas();
+}
+
+// ── Drag & drop on canvas ─────────────────────────────────────────────────
+function onCanvasDragOver(e) {
+  e.preventDefault();
+  document.getElementById('blockCanvas').classList.add('dragging-over');
+  const ph = document.getElementById('dropHint');
+  if (ph) ph.classList.add('active');
+}
+
+function onCanvasDragLeave(e) {
+  document.getElementById('blockCanvas').classList.remove('dragging-over');
+}
+
+function onCanvasDrop(e) {
+  e.preventDefault();
+  document.getElementById('blockCanvas').classList.remove('dragging-over');
+  if (dragSrcToolkit) {
+    addBlockFromToolkit(dragSrcIndex);
+  }
+}
+
+function onBlockDrop(targetIdx) {
+  if (dragSrcToolkit) {
+    const type   = dragSrcIndex;
+    const def    = BLOCK_DEFS[type];
+    const params = {};
+    def.params.forEach(p => params[p.id] = p.default);
+    canvasBlocks.splice(targetIdx, 0, {type, params, locked:false});
+  } else if (dragSrcIndex !== null && dragSrcIndex !== targetIdx) {
+    const moved = canvasBlocks.splice(dragSrcIndex, 1)[0];
+    canvasBlocks.splice(targetIdx, 0, moved);
+  }
+  dragSrcIndex = null;
+  renderCanvas();
+}
+
+// ── Code generation ───────────────────────────────────────────────────────
+const PREAMBLE = `
+MAX_SPEED    = 6.28
+CRUISE_SPEED = 0.8 * MAX_SPEED
+timestep = int(robot.getBasicTimeStep())
+left_motor  = robot.getDevice('left wheel motor')
+right_motor = robot.getDevice('right wheel motor')
+left_motor.setPosition(float('inf'))
+right_motor.setPosition(float('inf'))
+left_motor.setVelocity(0.0)
+right_motor.setVelocity(0.0)
+sensors = []
+for i in range(8):
+    s = robot.getDevice(f'ps{i}')
+    s.enable(timestep)
+    sensors.append(s)
+_gs   = robot.getDevice('ground_sensor')
+_spd  = 0.5
+`;
+
+function generateCode() {
+  const hasReactive = canvasBlocks.some(b => b.type === 'braitenberg' || b.type === 'if_obstacle');
+
+  let code = `
+_spd        = 0.5 * MAX_SPEED
+_BASE       = 100
+_MAXSIG     = 600.0
+_goal_found = False
+_gs         = robot.getDevice('ground_sensor')
+
+`;
+
+  if (hasReactive) {
+    code += `while not _goal_found:\n`;
+    canvasBlocks.forEach(b => { code += blockToCode(b, '    ', true); });
+    code += `    robot.step(timestep)\n`;
+  } else {
+    canvasBlocks.forEach(b => { code += blockToCode(b, '', false); });
+    code += `\nleft_motor.setVelocity(0)\nright_motor.setVelocity(0)\n`;
+  }
+  return code;
+}
+
+function blockToCode(b, indent, inLoop) {
+  const p = b.params;
+  switch(b.type) {
+    case 'set_speed':
+      return `${indent}_spd = ${p.spd} / 100.0 * MAX_SPEED\n` +
+             `${indent}left_motor.setVelocity(_spd)\n` +
+             `${indent}right_motor.setVelocity(_spd)\n`;
+
+    case 'forward':
+      if (!inLoop) {
+        return `${indent}for _step in range(int(${p.dur} * 1000 / timestep)):\n` +
+               `${indent}    if _goal_found: break\n` +
+               `${indent}    if min(_gs.getLeft(), _gs.getCenter(), _gs.getRight()) < 500:\n` +
+               `${indent}        left_motor.setVelocity(_spd * 0.4)\n` +
+               `${indent}        right_motor.setVelocity(_spd * 0.4)\n` +
+               `${indent}        robot.step(1000)\n` +
+               `${indent}        left_motor.setVelocity(0)\n` +
+               `${indent}        right_motor.setVelocity(0)\n` +
+               `${indent}        robot.step(200)\n` +
+               `${indent}        for _ci in range(6):\n` +
+               `${indent}            _colors = [(100,0,0),(0,100,0),(0,0,100),(100,100,0),(0,100,100),(100,0,100)]\n` +
+               `${indent}            _c = _colors[_ci % len(_colors)]\n` +
+               `${indent}            for i in range(4): robot.setRgbLed(i, _c[0], _c[1], _c[2])\n` +
+               `${indent}            robot.setSpeaker(1)\n` +
+               `${indent}            left_motor.setVelocity(MAX_SPEED * 0.8)\n` +
+               `${indent}            right_motor.setVelocity(-MAX_SPEED * 0.8)\n` +
+               `${indent}            robot.step(300)\n` +
+               `${indent}            robot.setSpeaker(0)\n` +
+               `${indent}            _c2 = _colors[(_ci+3) % len(_colors)]\n` +
+               `${indent}            for i in range(4): robot.setRgbLed(i, _c2[0], _c2[1], _c2[2])\n` +
+               `${indent}            left_motor.setVelocity(-MAX_SPEED * 0.8)\n` +
+               `${indent}            right_motor.setVelocity(MAX_SPEED * 0.8)\n` +
+               `${indent}            robot.step(300)\n` +
+               `${indent}        left_motor.setVelocity(0)\n` +
+               `${indent}        right_motor.setVelocity(0)\n` +
+               `${indent}        for i in range(4): robot.setRgbLed(i, 0, 100, 0)\n` +
+               `${indent}        print('GOAL')\n` +
+               `${indent}        _goal_found = True\n` +
+               `${indent}        break\n` +
+               `${indent}    left_motor.setVelocity(_spd)\n` +
+               `${indent}    right_motor.setVelocity(_spd)\n` +
+               `${indent}    robot.step(timestep)\n`;
+      }
+      return `${indent}left_motor.setVelocity(_spd)\n` +
+             `${indent}right_motor.setVelocity(_spd)\n` +
+             `${indent}robot.step(int(${p.dur} * 1000))\n`;
+
+    case 'turn_left':
+      return `${indent}left_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}right_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}robot.step(int(${p.deg} / 90.0 * 660))\n`;
+
+    case 'turn_right':
+      return `${indent}left_motor.setVelocity(0.5 * MAX_SPEED)\n` +
+             `${indent}right_motor.setVelocity(-0.5 * MAX_SPEED)\n` +
+             `${indent}robot.step(int(${p.deg} / 90.0 * 660))\n`;
+
+    case 'repeat':
+      return `${indent}for _i in range(${p.n}):\n` +
+             `${indent}    robot.step(timestep)\n`;
+
+    case 'braitenberg':
+      return `${indent}_ps  = [sensors[i].getValue() for i in range(8)]\n` +
+             `${indent}_sig = [max(0.0, _ps[i] - _BASE) / _MAXSIG for i in range(8)]\n` +
+             `${indent}_l   = _spd - ${p.sens} * _spd * (_sig[0] + 0.5 * _sig[1])\n` +
+             `${indent}_r   = _spd - ${p.sens} * _spd * (_sig[7] + 0.5 * _sig[6])\n` +
+             `${indent}left_motor.setVelocity(max(-MAX_SPEED, min(MAX_SPEED, _l)))\n` +
+             `${indent}right_motor.setVelocity(max(-MAX_SPEED, min(MAX_SPEED, _r)))\n`;
+
+    case 'if_obstacle':
+      return `${indent}_ps = [sensors[i].getValue() for i in range(8)]\n` +
+             `${indent}if _ps[0] > ${p.thr} or _ps[7] > ${p.thr}:\n` +
+             `${indent}    if _ps[0] >= _ps[7]:\n` +
+             `${indent}        left_motor.setVelocity(-_spd * 0.6)\n` +
+             `${indent}        right_motor.setVelocity(_spd * 0.6)\n` +
+             `${indent}    else:\n` +
+             `${indent}        left_motor.setVelocity(_spd * 0.6)\n` +
+             `${indent}        right_motor.setVelocity(-_spd * 0.6)\n` +
+             `${indent}    robot.step(400)\n`;
+
+    case 'if_goal':
+      if (inLoop) {
+        return `${indent}if min(_gs.getLeft(), _gs.getCenter(), _gs.getRight()) < ${p.thr}:\n` +
+               `${indent}    left_motor.setVelocity(_spd * 0.4)\n` +
+               `${indent}    right_motor.setVelocity(_spd * 0.4)\n` +
+               `${indent}    robot.step(400)\n` +
+               `${indent}    left_motor.setVelocity(0)\n` +
+               `${indent}    right_motor.setVelocity(0)\n` +
+               `${indent}    robot.step(200)\n` +
+               `${indent}    for _ci in range(6):\n` +
+               `${indent}        _colors = [(100,0,0),(0,100,0),(0,0,100),(100,100,0),(0,100,100),(100,0,100)]\n` +
+               `${indent}        _c = _colors[_ci % len(_colors)]\n` +
+               `${indent}        for i in range(4): robot.setRgbLed(i, _c[0], _c[1], _c[2])\n` +
+               `${indent}        robot.setSpeaker(1)\n` +
+               `${indent}        left_motor.setVelocity(MAX_SPEED * 0.8)\n` +
+               `${indent}        right_motor.setVelocity(-MAX_SPEED * 0.8)\n` +
+               `${indent}        robot.step(300)\n` +
+               `${indent}        robot.setSpeaker(0)\n` +
+               `${indent}        _c2 = _colors[(_ci+3) % len(_colors)]\n` +
+               `${indent}        for i in range(4): robot.setRgbLed(i, _c2[0], _c2[1], _c2[2])\n` +
+               `${indent}        left_motor.setVelocity(-MAX_SPEED * 0.8)\n` +
+               `${indent}        right_motor.setVelocity(MAX_SPEED * 0.8)\n` +
+               `${indent}        robot.step(300)\n` +
+               `${indent}    left_motor.setVelocity(0)\n` +
+               `${indent}    right_motor.setVelocity(0)\n` +
+               `${indent}    for i in range(4): robot.setRgbLed(i, 0, 100, 0)\n` +
+               `${indent}    print('GOAL')\n` +
+               `${indent}    _goal_found = True\n` +
+               `${indent}    break\n`;
+      } else {
+        return `${indent}# (goal detected automatically during forward moves)\n`;
+      }
+
+    default: return '';
+  }
+}
+
+// ── Connect ───────────────────────────────────────────────────────────────
+function getRobotBase(){ return 'http://' + document.getElementById('robotSelect').value + ':5000'; }
+function getWsUrl()    { return 'ws://'  + document.getElementById('robotSelect').value + ':5000/ws'; }
+
+async function toggleConnect() {
+  if (wsConnected) { if(ws){ws.close();ws=null;} return; }
+  const ip = document.getElementById('robotSelect').value;
+  if (!ip) { alert('Select a robot first!'); return; }
+  const btn = document.getElementById('connectBtn');
+  btn.className = 'btn-connect connecting';
+  document.getElementById('connectLabel').textContent = 'Connecting…';
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 3000);
+    const r = await fetch(getRobotBase() + '/ping', {signal:ctrl.signal});
+    const d = await r.json();
+    if (!d.ok) throw new Error();
+  } catch(e) {
+    btn.className = 'btn-connect error';
+    document.getElementById('connectLabel').textContent = 'Not found';
+    setStatus('error','❌ Robot not found');
+    setTimeout(()=>{btn.className='btn-connect';document.getElementById('connectLabel').textContent='Connect';},3000);
+    return;
+  }
+  ws = new WebSocket(getWsUrl());
+  ws.onopen = () => {
+    wsConnected = true;
+    btn.className = 'btn-connect connected';
+    document.getElementById('connectLabel').textContent = '● Connected';
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('','✅ Ready — press RUN MAZE!');
+    addLog('Connected','info');
+  };
+  ws.onmessage = e => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){} };
+  ws.onclose   = () => {
+    wsConnected = false; robotRunning = false;
+    btn.className='btn-connect';
+    document.getElementById('connectLabel').textContent='Connect';
+    document.getElementById('sendBtn').disabled=true;
+    document.getElementById('stopBtn').classList.remove('visible');
+    setStatus('','Connect your robot first');
+  };
+}
+
+function handleMsg(msg) {
+  if (msg.type==='ping') return;
+  if (msg.type==='status') {
+    if (msg.data==='running') {
+      robotRunning=true;
+      startRunTimer();
+      document.getElementById('stopBtn').classList.add('visible');
+      setStatus('running','🤖 Robot running in maze…');
+    } else if (msg.data==='idle' && !robotRunning) {
+      stopRunTimer();
+      document.getElementById('stopBtn').classList.remove('visible');
+      setStatus('','✅ Finished — check your result!');
+    } else if (msg.data==='error') {
+      robotRunning=false;
+      stopRunTimer();
+      document.getElementById('stopBtn').classList.remove('visible');
+      setStatus('error','❌ Error — try again');
+    }
+  }
+  if (msg.type==='log' && msg.data) {
+    if (msg.data.includes('GOAL')) {
+      stopRunTimer();
+      addLog('🎯 GOAL REACHED!', 'goal');
+      robotRunning=false;
+      document.getElementById('stopBtn').classList.remove('visible');
+      setStatus('','🎯 Goal reached!');
+      launchConfetti();
+    } else {
+      addLog(msg.data,'info');
+    }
+  }
+}
+
+async function sendProgram() {
+  if (!wsConnected) return;
+  if (canvasBlocks.length === 0) { alert('Add some blocks first!'); return; }
+  const code = PREAMBLE + generateCode();
+  try {
+    const res  = await fetch(getRobotBase() + '/run', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});
+    const data = await res.json();
+    if (data.ok) {
+      robotRunning=true;
+      document.getElementById('stopBtn').classList.add('visible');
+      setStatus('running','🤖 Robot running in maze…');
+      addLog('Program sent — go robot! 🚀','info');
+    } else {
+      setStatus('error','❌ ' + data.error);
+    }
+  } catch(e) { setStatus('error','❌ Send failed'); }
+}
+
+async function stopRobot() {
+  try {
+    await fetch(getRobotBase()+'/stop',{method:'POST'});
+    robotRunning=false;
+    stopRunTimer();
+    document.getElementById('stopBtn').classList.remove('visible');
+    setStatus('','⛔ Stopped');
+    addLog('Stopped','info');
+  } catch(e){}
+}
+
+function setStatus(type, text) {
+  const el = document.getElementById('statusLine');
+  el.className = 'status-line' + (type ? ' '+type : '');
+  document.getElementById('statusText').textContent = text;
+}
+
+function addLog(msg, type) {
+  const box  = document.getElementById('logBox');
+  const line = document.createElement('div');
+  line.className = type || 'info';
+  line.textContent = msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while(box.children.length > 40) box.removeChild(box.firstChild);
+}
+
+// ── Celebration confetti ──────────────────────────────────────────────────
+function launchConfetti() {
+  const colors = ['#39d98a','#4d9fff','#f5c842','#f25c5c','#c084fc','#ff8c42'];
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9999;width:100%;height:100%;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const pieces = Array.from({length:120}, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * 200,
+    w: 8 + Math.random() * 8,
+    h: 4 + Math.random() * 4,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    rot: Math.random() * Math.PI * 2,
+    vx: (Math.random() - 0.5) * 4,
+    vy: 3 + Math.random() * 5,
+    vr: (Math.random() - 0.5) * 0.2,
+  }));
+
+  let frame = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+      p.x  += p.vx;
+      p.y  += p.vy;
+      p.rot += p.vr;
+      p.vy += 0.08;
+      // Reset piece to top when it falls off bottom — keeps confetti going for 10s
+      if (p.y > canvas.height + 20) {
+        p.y  = -20;
+        p.x  = Math.random() * canvas.width;
+        p.vy = 3 + Math.random() * 4;
+        p.vx = (Math.random() - 0.5) * 4;
+      }
+    });
+    frame++;
+    if (frame < 600) requestAnimationFrame(draw);
+    else canvas.remove();
+  }
+  draw();
+}
+
+// ── Code viewer ───────────────────────────────────────────────────────────
+function showCode() {
+  if (canvasBlocks.length === 0) {
+    alert('Add some blocks first!');
+    return;
+  }
+
+  const fullCode = PREAMBLE + generateCode();
+
+  // Syntax highlight — colour comments, strings, keywords, numbers
+  const highlighted = fullCode
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/(#[^\n]*)/g,          '<span style="color:#5a6380;font-style:italic;">$1</span>')
+    .replace(/\b(True|False|None|for|while|if|else|elif|in|not|and|or|break|return|import|from|range|def|class|pass)\b/g,
+             '<span style="color:#c084fc;">$1</span>')
+    .replace(/\b(left_motor|right_motor|robot|sensors|MAX_SPEED|CRUISE_SPEED|timestep)\b/g,
+             '<span style="color:#4d9fff;">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g,
+             '<span style="color:#f5c842;">$1</span>')
+    .replace(/'([^'\\]*)'/g,
+             '<span style="color:#39d98a;">\'$1\'</span>');
+
+  document.getElementById('codeDisplay').innerHTML = highlighted;
+
+  // Summary line
+  const blockCount = canvasBlocks.length;
+  const approach   = currentApproach === 'blind' ? '📋 Blind Sequence' : '🧠 Reactive';
+  const level      = ['','🟢 Explorer','🟡 Navigator','🔴 Engineer'][currentLevel];
+  const lines      = fullCode.split('\n').length;
+  document.getElementById('codeSummary').innerHTML =
+    `${level} &nbsp;·&nbsp; ${approach} &nbsp;·&nbsp; <strong style="color:var(--text)">${blockCount} blocks</strong> → <strong style="color:var(--text)">${lines} lines</strong> of Python`;
+
+  const modal = document.getElementById('codeModal');
+  modal.style.display = 'flex';
+  // Close on backdrop click
+  modal.onclick = e => { if (e.target === modal) closeCode(); };
+}
+
+function closeCode() {
+  document.getElementById('codeModal').style.display = 'none';
+}
+
+function copyCode() {
+  const code = PREAMBLE + generateCode();
+  navigator.clipboard.writeText(code).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✅ Copied!';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => {
+      btn.textContent = '📋 Copy';
+      btn.style.color = 'var(--blue)';
+      btn.style.borderColor = 'var(--blue)';
+    }, 2000);
+  });
+}
+
+// Escape key closes modal
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeCode();
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    undoAction();
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadPreset();
+</script>
+<!-- Code viewer modal -->
+<div id="codeModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:flex-start;justify-content:center;padding:40px 24px;overflow-y:auto;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:14px;width:100%;max-width:720px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+
+    <!-- Modal header -->
+    <div style="padding:14px 20px;background:var(--panel2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+      <div style="font-family:var(--display);font-size:0.75rem;font-weight:700;letter-spacing:0.1em;color:var(--blue);">{ } GENERATED PYTHON CODE</div>
+      <div style="font-size:0.65rem;color:var(--muted);font-style:italic;">— this is what your blocks produce</div>
+      <button onclick="copyCode()" id="copyBtn"
+        style="margin-left:auto;background:rgba(77,159,255,0.1);border:1px solid var(--blue);color:var(--blue);font-family:var(--body);font-size:0.68rem;padding:4px 12px;border-radius:6px;cursor:pointer;">
+        📋 Copy
+      </button>
+      <button onclick="closeCode()"
+        style="background:none;border:1px solid var(--border);color:var(--muted);font-family:var(--body);font-size:0.68rem;padding:4px 10px;border-radius:6px;cursor:pointer;margin-left:4px;">
+        ✕ Close
+      </button>
+    </div>
+
+    <!-- Block summary -->
+    <div style="padding:10px 20px;background:rgba(77,159,255,0.05);border-bottom:1px solid var(--border);font-size:0.68rem;color:var(--muted);">
+      <span id="codeSummary"></span>
+    </div>
+
+    <!-- Code area -->
+    <pre id="codeDisplay" style="padding:20px;font-family:'Courier New',monospace;font-size:0.78rem;line-height:1.7;color:var(--text);overflow-x:auto;white-space:pre;max-height:60vh;overflow-y:auto;margin:0;"></pre>
+
+  </div>
+</div>
+
+
+<script>
+function showHelp() {
+  document.getElementById('helpModal').style.display = 'flex';
+}
+function closeHelp() {
+  document.getElementById('helpModal').style.display = 'none';
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeHelp(); }
+});
+</script>
+
+<!-- ── Help / Documentation Modal ───────────────────────────────────────── -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;align-items:flex-start;justify-content:center;padding:30px 20px;overflow-y:auto;">
+<div style="background:#fff;border-radius:16px;width:100%;max-width:820px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.5);font-family:'Segoe UI',Arial,sans-serif;color:#1a1a2e;">
+
+  <!-- Modal header -->
+  <div style="background:linear-gradient(135deg,#1a1e28,#0d0f14);padding:18px 24px;display:flex;align-items:center;gap:14px;">
+    <div style="font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:900;color:#4d9fff;letter-spacing:0.1em;">📖 HELP &amp; DOCUMENTATION</div>
+    <div style="font-size:0.72rem;color:#5a6380;font-style:italic;">UNamur Robotics Lab — e-puck2 Maze Challenge</div>
+    <button onclick="closeHelp()" style="margin-left:auto;background:none;border:1px solid #2a2f3f;color:#5a6380;font-size:0.75rem;padding:5px 12px;border-radius:6px;cursor:pointer;">✕ Close</button>
+  </div>
+
+  <!-- Tab bar -->
+  <div id="helpTabs" style="display:flex;border-bottom:2px solid #e8ecf4;background:#f8f9fc;">
+    <button class="htab active" onclick="switchTab('overview')"   style="padding:12px 20px;border:none;background:none;font-size:0.82rem;font-weight:700;color:#4d9fff;border-bottom:3px solid #4d9fff;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🏠 Overview</button>
+    <button class="htab"        onclick="switchTab('interface')"  style="padding:12px 20px;border:none;background:none;font-size:0.82rem;font-weight:600;color:#5a6380;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🖥️ Interface</button>
+    <button class="htab"        onclick="switchTab('blocks')"     style="padding:12px 20px;border:none;background:none;font-size:0.82rem;font-weight:600;color:#5a6380;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🧩 Blocks</button>
+    <button class="htab"        onclick="switchTab('arena')"      style="padding:12px 20px;border:none;background:none;font-size:0.82rem;font-weight:600;color:#5a6380;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">🏟️ Arena</button>
+    <button class="htab"        onclick="switchTab('tips')"       style="padding:12px 20px;border:none;background:none;font-size:0.82rem;font-weight:600;color:#5a6380;border-bottom:3px solid transparent;cursor:pointer;font-family:'Segoe UI',Arial,sans-serif;">💡 Tips</button>
+  </div>
+
+  <!-- Tab content -->
+  <div style="padding:28px;max-height:65vh;overflow-y:auto;line-height:1.7;font-size:0.88rem;">
+
+    <!-- ── OVERVIEW ── -->
+    <div id="tab-overview" class="htab-content">
+      <h2 style="font-size:1.2rem;color:#1a1a2e;margin-bottom:6px;">Welcome to the Maze Challenge! 🤖</h2>
+      <p style="color:#6b7a99;font-style:italic;margin-bottom:20px;">Bienvenue dans le défi du labyrinthe !</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+        <div style="background:#f0f7ff;border-left:4px solid #4d9fff;border-radius:8px;padding:16px;">
+          <div style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">🇬🇧 English</div>
+          <p>In this activity, you will program a real robot to navigate through a corridor without hitting walls or obstacles. You do this by assembling <strong>blocks</strong> — like building with LEGO — each block representing one action the robot will perform.</p>
+          <p style="margin-top:8px;">The goal is to reach the end of the corridor by finding the right sequence of movements and the right timing.</p>
+        </div>
+        <div style="background:#fff8f0;border-left:4px solid #ff8c42;border-radius:8px;padding:16px;">
+          <div style="font-weight:700;color:#1a1a2e;margin-bottom:6px;">🇫🇷 Français</div>
+          <p>Dans cette activité, vous allez programmer un vrai robot pour traverser un couloir sans heurter les murs ou les obstacles. Vous faites cela en assemblant des <strong>blocs</strong> — comme construire avec des LEGO — chaque bloc représentant une action que le robot va effectuer.</p>
+          <p style="margin-top:8px;">L'objectif est d'atteindre l'extrémité du couloir en trouvant la bonne séquence de mouvements et le bon minutage.</p>
+        </div>
+      </div>
+
+      <div style="background:#f6fff9;border:1px solid #39d98a;border-radius:10px;padding:16px;margin-bottom:20px;">
+        <div style="font-weight:700;color:#1a7a4a;margin-bottom:8px;">⚡ Quick Start / Démarrage rapide</div>
+        <ol style="padding-left:20px;color:#2d5a3d;">
+          <li style="margin-bottom:4px;"><strong>Select your robot</strong> from the dropdown on the right / <em>Sélectionnez votre robot dans la liste à droite</em></li>
+          <li style="margin-bottom:4px;"><strong>Click Connect</strong> to link to the robot / <em>Cliquez sur Connecter pour établir la liaison</em></li>
+          <li style="margin-bottom:4px;"><strong>Choose a Level</strong> and a Strategy / <em>Choisissez un niveau et une stratégie</em></li>
+          <li style="margin-bottom:4px;"><strong>Arrange and tune the blocks</strong> in the workspace / <em>Arrangez et ajustez les blocs dans l'espace de travail</em></li>
+          <li style="margin-bottom:4px;"><strong>Press RUN MAZE</strong> to send the program to the robot / <em>Appuyez sur LANCER LE LABYRINTHE</em></li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- ── INTERFACE ── -->
+    <div id="tab-interface" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.2rem;color:#1a1a2e;margin-bottom:16px;">🖥️ Interface Guide / Guide de l'interface</h2>
+
+      <div style="margin-bottom:22px;">
+        <div style="background:#4d9fff;color:#fff;font-weight:700;font-size:0.78rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">LEVEL BAR / BARRE DE NIVEAU</div>
+        <div style="border:1px solid #dde3f0;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <p>🇬🇧 Three difficulty levels change how the workspace starts:</p>
+          <p>🇫🇷 Trois niveaux de difficulté changent l'état initial de l'espace de travail :</p>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;">
+            <div style="background:#f0fff6;border:2px solid #39d98a;border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:1.2rem;">🟢</div>
+              <div style="font-weight:700;color:#1a7a4a;">Explorer</div>
+              <div style="font-size:0.75rem;color:#5a6380;margin-top:4px;">Blocks already placed. Just tune the numbers. / Les blocs sont déjà placés. Ajustez seulement les nombres.</div>
+            </div>
+            <div style="background:#fffdf0;border:2px solid #f5c842;border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:1.2rem;">🟡</div>
+              <div style="font-weight:700;color:#7a6a1a;">Navigator</div>
+              <div style="font-size:0.75rem;color:#5a6380;margin-top:4px;">Blocks shuffled. Put them in the right order. / Les blocs sont mélangés. Mettez-les dans le bon ordre.</div>
+            </div>
+            <div style="background:#fff0f0;border:2px solid #f25c5c;border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:1.2rem;">🔴</div>
+              <div style="font-weight:700;color:#7a1a1a;">Engineer</div>
+              <div style="font-size:0.75rem;color:#5a6380;margin-top:4px;">Empty workspace. Build from scratch! / Espace vide. Construisez de zéro !</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <div style="background:#39d98a;color:#fff;font-weight:700;font-size:0.78rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">WORKSPACE / ESPACE DE TRAVAIL (LEFT / GAUCHE)</div>
+        <div style="border:1px solid #dde3f0;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <p>🇬🇧 This is where you build your program. You can:</p>
+          <p>🇫🇷 C'est ici que vous construisez votre programme. Vous pouvez :</p>
+          <ul style="padding-left:20px;margin-top:8px;">
+            <li style="margin-bottom:4px;"><strong>Drag blocks</strong> from the toolkit at the bottom to reorder them / <em>Glisser les blocs</em> depuis la boîte à outils en bas pour les réordonner</li>
+            <li style="margin-bottom:4px;"><strong>Click the number</strong> inside a block to edit its value / <em>Cliquer sur le nombre</em> dans un bloc pour modifier sa valeur</li>
+            <li style="margin-bottom:4px;"><strong>Remove a block</strong> using the 🗑 button — it goes to the recycle bin below / <em>Supprimer un bloc</em> avec le bouton 🗑 — il va dans la corbeille</li>
+            <li style="margin-bottom:4px;"><strong>Undo</strong> your last action with the ↩ button or Ctrl+Z / <em>Annuler</em> votre dernière action avec ↩ ou Ctrl+Z</li>
+            <li style="margin-bottom:4px;"><strong>View Code</strong> to see the Python code your blocks generate / <em>Voir le code</em> Python généré par vos blocs</li>
+          </ul>
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <div style="background:#ff8c42;color:#fff;font-weight:700;font-size:0.78rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">STRATEGY SELECTOR / SÉLECTEUR DE STRATÉGIE</div>
+        <div style="border:1px solid #dde3f0;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:4px;">
+            <div style="background:#f0f7ff;border-radius:8px;padding:12px;">
+              <div style="font-weight:700;color:#1a1a2e;margin-bottom:4px;">📋 Blind Sequence</div>
+              <p>🇬🇧 The robot follows a fixed list of moves in order, with no sensor feedback. Like giving someone directions step by step.</p>
+              <p style="margin-top:6px;">🇫🇷 Le robot suit une liste fixe de mouvements dans l'ordre, sans retour des capteurs. Comme donner des directions étape par étape.</p>
+            </div>
+            <div style="background:#f0fff6;border-radius:8px;padding:12px;">
+              <div style="font-weight:700;color:#1a1a2e;margin-bottom:4px;">🧠 Reactive</div>
+              <p>🇬🇧 The robot continuously reads its sensors and reacts to what it detects — obstacles, walls, the goal. More autonomous.</p>
+              <p style="margin-top:6px;">🇫🇷 Le robot lit continuellement ses capteurs et réagit à ce qu'il détecte — obstacles, murs, objectif. Plus autonome.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:22px;">
+        <div style="background:#c084fc;color:#fff;font-weight:700;font-size:0.78rem;padding:6px 12px;border-radius:6px 6px 0 0;letter-spacing:0.08em;">RIGHT PANEL / PANNEAU DROIT</div>
+        <div style="border:1px solid #dde3f0;border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+          <ul style="padding-left:20px;">
+            <li style="margin-bottom:6px;"><strong>Robot dropdown</strong> — select which robot to connect to / <em>Liste déroulante Robot</em> — sélectionnez le robot auquel se connecter</li>
+            <li style="margin-bottom:6px;"><strong>Connect button</strong> — establishes the connection (turns green when connected) / <em>Bouton Connecter</em> — établit la connexion (devient vert quand connecté)</li>
+            <li style="margin-bottom:6px;"><strong>▶ RUN MAZE</strong> — sends your program to the robot and starts it / <em>▶ LANCER LE LABYRINTHE</em> — envoie votre programme au robot et le démarre</li>
+            <li style="margin-bottom:6px;"><strong>⛔ STOP</strong> — immediately stops the robot / <em>⛔ STOP</em> — arrête immédiatement le robot</li>
+            <li style="margin-bottom:6px;"><strong>Timer</strong> — shows elapsed time while robot is running, useful for calibrating durations / <em>Minuterie</em> — affiche le temps écoulé, utile pour calibrer les durées</li>
+            <li style="margin-bottom:6px;"><strong>Log</strong> — shows messages from the robot in real time / <em>Journal</em> — affiche les messages du robot en temps réel</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── BLOCKS ── -->
+    <div id="tab-blocks" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.2rem;color:#1a1a2e;margin-bottom:16px;">🧩 Block Reference / Référence des blocs</h2>
+      <p style="color:#6b7a99;margin-bottom:20px;">🇬🇧 Each block represents one instruction for the robot. Click the number inside a block to change it.<br>🇫🇷 Chaque bloc représente une instruction pour le robot. Cliquez sur le nombre dans un bloc pour le modifier.</p>
+
+      <!-- MOVE blocks -->
+      <div style="font-weight:700;font-size:0.75rem;letter-spacing:0.12em;color:#4d9fff;text-transform:uppercase;margin-bottom:8px;padding-bottom:4px;border-bottom:2px solid #4d9fff;">Move Blocks / Blocs de mouvement</div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #4d9fff;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">⬆️</span>
+          <span style="font-weight:700;font-size:0.95rem;">Move Forward / Avancer</span>
+          <span style="margin-left:auto;background:#f0f7ff;color:#4d9fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">dur (sec)</span>
+        </div>
+        <p>🇬🇧 Moves the robot straight forward for a given number of seconds. Increasing the duration moves the robot further.<br><strong>Example:</strong> dur = 2.0 → robot moves forward for 2 seconds.</p>
+        <p style="margin-top:6px;">🇫🇷 Fait avancer le robot tout droit pendant un nombre de secondes donné. Augmenter la durée fait avancer le robot plus loin.<br><strong>Exemple :</strong> dur = 2.0 → le robot avance pendant 2 secondes.</p>
+      </div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #4d9fff;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">⚡</span>
+          <span style="font-weight:700;font-size:0.95rem;">Set Speed / Régler la vitesse</span>
+          <span style="margin-left:auto;background:#f0f7ff;color:#4d9fff;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">spd (%)</span>
+        </div>
+        <p>🇬🇧 Sets the robot's speed as a percentage (10%–100%). Place this block <strong>before</strong> any forward or turn blocks. A lower speed gives you more precision.<br><strong>Example:</strong> spd = 50 → robot moves at half speed.</p>
+        <p style="margin-top:6px;">🇫🇷 Définit la vitesse du robot en pourcentage (10%–100%). Placez ce bloc <strong>avant</strong> les blocs avancer ou tourner. Une vitesse plus faible donne plus de précision.<br><strong>Exemple :</strong> spd = 50 → le robot se déplace à mi-vitesse.</p>
+      </div>
+
+      <!-- TURN blocks -->
+      <div style="font-weight:700;font-size:0.75rem;letter-spacing:0.12em;color:#ff8c42;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #ff8c42;">Turn Blocks / Blocs de rotation</div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #ff8c42;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">↰</span>
+          <span style="font-weight:700;font-size:0.95rem;">Turn Left / Tourner à gauche</span>
+          <span style="margin-left:auto;background:#fff5ee;color:#ff8c42;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">deg (°)</span>
+        </div>
+        <p>🇬🇧 Rotates the robot to the left by a given number of degrees. 90° = quarter turn, 180° = half turn.<br><strong>Example:</strong> deg = 90 → robot turns left by 90 degrees.</p>
+        <p style="margin-top:6px;">🇫🇷 Fait pivoter le robot vers la gauche d'un nombre de degrés donné. 90° = quart de tour, 180° = demi-tour.<br><strong>Exemple :</strong> deg = 90 → le robot tourne à gauche de 90 degrés.</p>
+      </div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #ff8c42;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">↱</span>
+          <span style="font-weight:700;font-size:0.95rem;">Turn Right / Tourner à droite</span>
+          <span style="margin-left:auto;background:#fff5ee;color:#ff8c42;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">deg (°)</span>
+        </div>
+        <p>🇬🇧 Rotates the robot to the right by a given number of degrees.<br><strong>Example:</strong> deg = 90 → robot turns right by 90 degrees.</p>
+        <p style="margin-top:6px;">🇫🇷 Fait pivoter le robot vers la droite d'un nombre de degrés donné.<br><strong>Exemple :</strong> deg = 90 → le robot tourne à droite de 90 degrés.</p>
+      </div>
+
+      <!-- CONTROL blocks -->
+      <div style="font-weight:700;font-size:0.75rem;letter-spacing:0.12em;color:#f5c842;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #f5c842;">Control Blocks / Blocs de contrôle</div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #f5c842;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">🔁</span>
+          <span style="font-weight:700;font-size:0.95rem;">Repeat / Répéter</span>
+          <span style="margin-left:auto;background:#fffdf0;color:#c9a800;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">n (×)</span>
+        </div>
+        <p>🇬🇧 Repeats the previous block's action N times. Useful to avoid copying the same block multiple times.<br><strong>Example:</strong> n = 3 → the action above is repeated 3 times.</p>
+        <p style="margin-top:6px;">🇫🇷 Répète l'action du bloc précédent N fois. Utile pour éviter de copier le même bloc plusieurs fois.<br><strong>Exemple :</strong> n = 3 → l'action ci-dessus est répétée 3 fois.</p>
+      </div>
+
+      <!-- SENSE blocks -->
+      <div style="font-weight:700;font-size:0.75rem;letter-spacing:0.12em;color:#39d98a;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #39d98a;">Sensor Blocks / Blocs capteurs (Reactive only)</div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #39d98a;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">🧠</span>
+          <span style="font-weight:700;font-size:0.95rem;">Braitenberg Avoid / Évitement Braitenberg</span>
+          <span style="margin-left:auto;background:#f0fff6;color:#1a7a4a;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">sensitivity</span>
+        </div>
+        <p>🇬🇧 Uses the proximity sensors to automatically steer away from walls and obstacles. Higher sensitivity = stronger avoidance reaction.<br><strong>Example:</strong> sens = 1.5 → moderate avoidance.</p>
+        <p style="margin-top:6px;">🇫🇷 Utilise les capteurs de proximité pour s'écarter automatiquement des murs et obstacles. Sensibilité plus élevée = réaction d'évitement plus forte.<br><strong>Exemple :</strong> sens = 1.5 → évitement modéré.</p>
+      </div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #39d98a;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">🚧</span>
+          <span style="font-weight:700;font-size:0.95rem;">If Obstacle → Turn Away / Si obstacle → tourner</span>
+          <span style="margin-left:auto;background:#f0fff6;color:#1a7a4a;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">threshold</span>
+        </div>
+        <p>🇬🇧 If the front proximity sensors detect an obstacle above the threshold value, the robot turns away from it automatically.<br><strong>Example:</strong> thr = 500 → turns away when obstacle is close.</p>
+        <p style="margin-top:6px;">🇫🇷 Si les capteurs de proximité frontaux détectent un obstacle au-dessus de la valeur seuil, le robot s'en éloigne automatiquement.<br><strong>Exemple :</strong> thr = 500 → tourne quand l'obstacle est proche.</p>
+      </div>
+
+      <!-- GOAL block -->
+      <div style="font-weight:700;font-size:0.75rem;letter-spacing:0.12em;color:#c084fc;text-transform:uppercase;margin:16px 0 8px;padding-bottom:4px;border-bottom:2px solid #c084fc;">Goal Block / Bloc objectif</div>
+
+      <div style="border:2px solid #e8ecf4;border-left:4px solid #c084fc;border-radius:8px;padding:14px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:1.4rem;">🎯</span>
+          <span style="font-weight:700;font-size:0.95rem;">If on Goal → Stop / Si sur l'objectif → arrêter</span>
+          <span style="margin-left:auto;background:#fdf0ff;color:#8a3fc0;font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:4px;">threshold</span>
+        </div>
+        <p>🇬🇧 Detects the black tape at the end of the corridor using the ground sensor. When the robot crosses it, it stops and celebrates! Place this block at the <strong>end</strong> of your program.<br><strong>Example:</strong> thr = 500 → triggers when the ground is darker than 500.</p>
+        <p style="margin-top:6px;">🇫🇷 Détecte le ruban noir au bout du couloir grâce au capteur de sol. Quand le robot le traverse, il s'arrête et célèbre ! Placez ce bloc à la <strong>fin</strong> de votre programme.<br><strong>Exemple :</strong> thr = 500 → se déclenche quand le sol est plus sombre que 500.</p>
+      </div>
+    </div>
+
+    <!-- ── ARENA ── -->
+    <div id="tab-arena" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.2rem;color:#1a1a2e;margin-bottom:16px;">🏟️ The Arena / L'arène</h2>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div>
+          <p>🇬🇧 The arena is a straight corridor:</p>
+          <ul style="padding-left:20px;margin-top:8px;margin-bottom:12px;">
+            <li style="margin-bottom:4px;"><strong>120 cm long</strong>, <strong>23 cm wide</strong></li>
+            <li style="margin-bottom:4px;">Two <strong>box obstacles</strong> — one on the left side (at ~40 cm), one on the right side (at ~80 cm)</li>
+            <li style="margin-bottom:4px;">Each box occupies <strong>half the corridor width</strong>, leaving a gap on the other side to pass through</li>
+            <li style="margin-bottom:4px;">A <strong>black tape</strong> before each box marks a checkpoint</li>
+            <li style="margin-bottom:4px;">A <strong>black tape</strong> at the end marks the goal</li>
+          </ul>
+        </div>
+        <div>
+          <p>🇫🇷 L'arène est un couloir droit :</p>
+          <ul style="padding-left:20px;margin-top:8px;margin-bottom:12px;">
+            <li style="margin-bottom:4px;"><strong>120 cm de long</strong>, <strong>23 cm de large</strong></li>
+            <li style="margin-bottom:4px;">Deux <strong>obstacles (boîtes)</strong> — un à gauche (~40 cm), un à droite (~80 cm)</li>
+            <li style="margin-bottom:4px;">Chaque boîte occupe <strong>la moitié de la largeur</strong> du couloir, laissant un passage de l'autre côté</li>
+            <li style="margin-bottom:4px;">Un <strong>ruban noir</strong> avant chaque boîte marque un point de contrôle</li>
+            <li style="margin-bottom:4px;">Un <strong>ruban noir</strong> à la fin marque l'objectif</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Arena diagram -->
+      <div style="background:#1a1e28;border-radius:12px;padding:20px;margin-bottom:20px;">
+        <div style="font-family:'Space Mono',monospace;font-size:0.75rem;color:#e8ecf4;line-height:2;">
+          <div style="color:#5a6380;margin-bottom:6px;font-size:0.65rem;letter-spacing:0.1em;">TOP VIEW / VUE DU DESSUS</div>
+          <div style="color:#4d9fff;">┌──────────────────────────────────────────────────────────┐</div>
+          <div><span style="color:#4d9fff;">│</span> <span style="color:#f5c842;">START</span>  <span style="color:#39d98a;">▶</span>  <span style="color:#f25c5c;">║</span><span style="color:#5a6380;">░░░░░</span><span style="color:#f25c5c;">║</span>  <span style="color:#39d98a;">│</span>  <span style="color:#5a6380;">░░░░░</span><span style="color:#f25c5c;">│║</span><span style="color:#5a6380;">░░░</span>  <span style="color:#39d98a;">━━━</span>  <span style="color:#c084fc;">🎯</span>  <span style="color:#4d9fff;">│</span></div>
+          <div style="color:#4d9fff;">└──────────────────────────────────────────────────────────┘</div>
+          <div style="margin-top:10px;display:flex;gap:20px;flex-wrap:wrap;">
+            <span><span style="color:#f25c5c;">║</span> = Box obstacle / Boîte obstacle</span>
+            <span><span style="color:#39d98a;">━━━</span> = Black tape / Ruban noir</span>
+            <span><span style="color:#c084fc;">🎯</span> = Goal tape / Ruban objectif</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:#fff8f0;border:1px solid #ff8c42;border-radius:10px;padding:14px;">
+        <div style="font-weight:700;color:#c05a00;margin-bottom:8px;">⚠️ Important Rules / Règles importantes</div>
+        <ul style="padding-left:20px;color:#5a3000;">
+          <li style="margin-bottom:4px;">🇬🇧 If the robot hits a wall or box, the team must restart from the beginning — <strong>but the timer keeps running!</strong></li>
+          <li style="margin-bottom:4px;">🇫🇷 Si le robot heurte un mur ou une boîte, l'équipe doit recommencer depuis le début — <strong>mais le chronomètre continue !</strong></li>
+          <li style="margin-bottom:4px;">🇬🇧 Passing through the gap without touching the checkpoint tape means <strong>no points</strong> for that checkpoint.</li>
+          <li style="margin-bottom:4px;">🇫🇷 Passer par le gap sans toucher le ruban du point de contrôle signifie <strong>aucun point</strong> pour ce checkpoint.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── TIPS ── -->
+    <div id="tab-tips" class="htab-content" style="display:none;">
+      <h2 style="font-size:1.2rem;color:#1a1a2e;margin-bottom:16px;">💡 Tips &amp; Tricks / Astuces</h2>
+
+      <div style="border:2px solid #4d9fff;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#1a4a7a;margin-bottom:8px;">📐 Calculating Forward Duration / Calculer la durée d'avancement</div>
+        <p>🇬🇧 The key challenge is figuring out how long the robot needs to move forward to reach each checkpoint tape. Here's the formula:</p>
+        <p>🇫🇷 Le défi principal est de déterminer combien de temps le robot doit avancer pour atteindre chaque ruban. Voici la formule :</p>
+        <div style="background:#f0f7ff;border-radius:8px;padding:14px;margin-top:10px;text-align:center;">
+          <div style="font-size:1rem;font-weight:700;color:#1a4a7a;font-family:'Courier New',monospace;">duration (s) = distance (cm) / speed (cm/s)</div>
+          <div style="font-size:0.75rem;color:#5a6380;margin-top:6px;">At 50% speed, the robot moves approximately <strong>15–18 cm/s</strong> / À 50% de vitesse, le robot avance environ <strong>15–18 cm/s</strong></div>
+        </div>
+        <p style="margin-top:10px;">🇬🇧 <strong>Example:</strong> First checkpoint is at 40 cm. At 50% speed (~16 cm/s): 40 ÷ 16 ≈ 2.5 seconds. Start with 2.5s and adjust from there!</p>
+        <p style="margin-top:6px;">🇫🇷 <strong>Exemple :</strong> Premier checkpoint à 40 cm. À 50% de vitesse (~16 cm/s) : 40 ÷ 16 ≈ 2.5 secondes. Commencez par 2.5s et ajustez !</p>
+      </div>
+
+      <div style="border:2px solid #39d98a;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#1a7a4a;margin-bottom:8px;">🔄 Calculating Turn Duration / Calculer la durée de rotation</div>
+        <p>🇬🇧 A 90° turn at default speed takes approximately <strong>0.66 seconds</strong>. The block uses degrees — just enter the angle you want.</p>
+        <p style="margin-top:6px;">🇫🇷 Un virage à 90° à la vitesse par défaut prend environ <strong>0.66 secondes</strong>. Le bloc utilise les degrés — entrez simplement l'angle souhaité.</p>
+      </div>
+
+      <div style="border:2px solid #f5c842;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#7a6a1a;margin-bottom:8px;">🔁 Using the Timer / Utiliser le chronomètre</div>
+        <p>🇬🇧 Watch the elapsed timer when the robot is running. If the robot takes 3.2s to reach the first tape, try setting your first forward block to 3.2s next time!</p>
+        <p style="margin-top:6px;">🇫🇷 Observez le chronomètre pendant que le robot avance. Si le robot prend 3,2s pour atteindre le premier ruban, essayez de mettre 3,2s dans votre premier bloc avancer !</p>
+      </div>
+
+      <div style="border:2px solid #f25c5c;border-radius:10px;padding:16px;margin-bottom:16px;">
+        <div style="font-weight:700;color:#7a1a1a;margin-bottom:8px;">⚡ Start Slow! / Commencez lentement !</div>
+        <p>🇬🇧 Always start with a low speed (30–50%). A slower robot is easier to observe, gives you more time to react, and is less likely to crash hard into walls.</p>
+        <p style="margin-top:6px;">🇫🇷 Commencez toujours avec une vitesse faible (30–50%). Un robot plus lent est plus facile à observer, vous donne plus de temps pour réagir, et a moins de risques de percuter violemment les murs.</p>
+      </div>
+
+      <div style="border:2px solid #c084fc;border-radius:10px;padding:16px;">
+        <div style="font-weight:700;color:#5a1a7a;margin-bottom:8px;">🎯 Goal Detection / Détection de l'objectif</div>
+        <p>🇬🇧 Always place the <strong>🎯 If on Goal</strong> block at the very end of your program. The robot will keep moving until it detects the final black tape, then stop and celebrate automatically.</p>
+        <p style="margin-top:6px;">🇫🇷 Placez toujours le bloc <strong>🎯 Si sur l'objectif</strong> tout à la fin de votre programme. Le robot continuera à avancer jusqu'à ce qu'il détecte le ruban noir final, puis s'arrêtera et célébrera automatiquement.</p>
+      </div>
+    </div>
+
+  </div><!-- end tab content -->
+</div><!-- end modal inner -->
+</div><!-- end modal overlay -->
+
+<style>
+.htab-content { display: none; }
+.htab-content:first-child { display: block; }
+#tab-overview { display: block; }
+</style>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.htab-content').forEach(el => el.style.display = 'none');
+  document.getElementById('tab-' + name).style.display = 'block';
+  document.querySelectorAll('.htab').forEach(btn => {
+    btn.style.color = '#5a6380';
+    btn.style.fontWeight = '600';
+    btn.style.borderBottom = '3px solid transparent';
+  });
+  event.target.style.color = '#4d9fff';
+  event.target.style.fontWeight = '700';
+  event.target.style.borderBottom = '3px solid #4d9fff';
+}
+</script>
+</body>
+</html>

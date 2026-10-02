@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>e-puck Block Programmer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/blockly/10.4.3/blockly.min.js"></script>
+
+<script>
+// ── PANE SYSTEM ──────────────────────────────────────────────────────────────
+function initPanes() {
+  document.querySelectorAll('.fpane').forEach(function(pane) {
+    var header = pane.querySelector('.fpane-header');
+    var resize = pane.querySelector('.fpane-resize');
+    if (header) makeDraggable(pane, header);
+    if (resize)  makeResizable(pane, resize);
+    pane.addEventListener('mousedown', function() { bringToFront(pane); });
+  });
+}
+
+function bringToFront(pane) {
+  var maxZ = 100;
+  document.querySelectorAll('.fpane').forEach(function(p) {
+    var z = parseInt(p.style.zIndex) || 100;
+    if (z > maxZ) maxZ = z;
+  });
+  pane.style.zIndex = maxZ + 1;
+}
+
+function makeDraggable(pane, header) {
+  header.addEventListener('mousedown', function(e) {
+    if (e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    bringToFront(pane);
+    var container = document.querySelector('.main');
+    var cr = container.getBoundingClientRect();
+    var pr = pane.getBoundingClientRect();
+    var startL = pr.left - cr.left;
+    var startT = pr.top  - cr.top;
+    pane.style.left = startL + 'px'; pane.style.top = startT + 'px';
+    pane.style.right = 'auto'; pane.style.bottom = 'auto';
+    var startX = e.clientX, startY = e.clientY;
+    function onMove(e) {
+      var c2 = document.querySelector('.main');
+      pane.style.left = Math.max(0, Math.min(c2.offsetWidth  - pane.offsetWidth,  startL + e.clientX - startX)) + 'px';
+      pane.style.top  = Math.max(0, Math.min(c2.offsetHeight - pane.offsetHeight, startT + e.clientY - startY)) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function makeResizable(pane, handle) {
+  handle.addEventListener('mousedown', function(e) {
+    e.preventDefault(); e.stopPropagation();
+    var startX = e.clientX, startY = e.clientY;
+    var startW = pane.offsetWidth, startH = pane.offsetHeight;
+    function onMove(e) {
+      pane.style.width  = Math.max(200, startW + e.clientX - startX) + 'px';
+      pane.style.height = Math.max(80,  startH + e.clientY - startY) + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function collapsePane(id) {
+  var pane = document.getElementById(id);
+  var body = pane.querySelector('.fpane-body');
+  var resz = pane.querySelector('.fpane-resize');
+  body.classList.toggle('collapsed');
+  if (resz) resz.style.visibility = body.classList.contains('collapsed') ? 'hidden' : 'visible';
+}
+
+function closePane(paneId, chipId) {
+  document.getElementById(paneId).style.display = 'none';
+  var chip = document.getElementById(chipId);
+  if (chip) chip.classList.remove('on');
+}
+
+function togglePane(paneId, chipId) {
+  var pane = document.getElementById(paneId);
+  var chip = document.getElementById(chipId);
+  var hidden = pane.style.display === 'none';
+  pane.style.display = hidden ? 'flex' : 'none';
+  if (chip) chip.classList.toggle('on', hidden);
+  if (hidden) { bringToFront(pane); pane.querySelector('.fpane-body').classList.remove('collapsed'); }
+}
+
+window.addEventListener('load', function() {
+  initPanes();
+  // addLog is defined later in blockly-config.js, defer slightly
+  setTimeout(function() {
+    addLog('🖱 Drag pane headers · resize corners · chips toggle panels', 'info');
+  }, 100);
+});
+</script>
+
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Sensor bar — two-line layout: label+value on top, full-width bar below */
+    .sensor-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-bottom: 1px;
+    }
+    .sensor-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+    .sensor-track { width: 100%; }
+    .sensor-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: bold;
+      color: #58a6ff;
+      transition: color 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .sensor-val.warn { color: #f0883e; }
+    /* IMU bidirectional bar rows */
+    .imu-row { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+    .imu-axis { font-family:'Space Mono',monospace; font-size:0.65rem; color:#e3b341; width:10px; flex-shrink:0; }
+    .imu-val  { font-family:'Space Mono',monospace; font-size:0.65rem; color:#58a6ff; width:44px; text-align:right; flex-shrink:0; }
+    .imu-track { flex:1; height:8px; background:#21262d; border-radius:4px; position:relative; overflow:hidden; }
+    .imu-center { position:absolute; left:50%; top:0; width:1px; height:100%; background:#484f58; }
+    .imu-fill-neg { position:absolute; right:50%; top:0; height:100%; width:0%; background:#58a6ff; border-radius:4px 0 0 4px; transition:width 0.08s; }
+    .imu-fill-pos { position:absolute; left:50%; top:0; height:100%; width:0%; background:#58a6ff; border-radius:0 4px 4px 0; transition:width 0.08s; }
+  </style>
+</head>
+<body>
+
+<header style="position:relative;">
+  <div class="logo">
+    <svg class="robot-icon" viewBox="0 0 38 38" fill="none">
+      <circle cx="19" cy="21" r="13" fill="#0a4f7a" stroke="#00e5ff" stroke-width="1.5"/>
+      <circle cx="14" cy="17" r="3" fill="#00e5ff" opacity="0.9"/>
+      <circle cx="24" cy="17" r="3" fill="#00e5ff" opacity="0.9"/>
+      <rect x="14" y="24" width="10" height="2.5" rx="1.25" fill="#00e5ff" opacity="0.6"/>
+      <rect x="17" y="6" width="4" height="6" rx="2" fill="#30363d" stroke="#00e5ff" stroke-width="1"/>
+      <circle cx="19" cy="6" r="1.5" fill="#00e5ff"/>
+    </svg>
+    <div>
+      <div class="logo-text">e-puck2 <span>/ block coder</span></div>
+    </div>
+  </div>
+  <div style="position:absolute;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;">
+    <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;
+                color:#e3b341;letter-spacing:0.06em;line-height:1.2;">
+      UNamur Robotics Lab
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#d4a017;
+                letter-spacing:0.14em;text-transform:uppercase;">
+      University of Namur
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn btn-clear" onclick="clearWorkspace()">✕ Clear</button>
+    <button class="btn btn-ghost" onclick="loadExample()">📂 Examples</button>
+    <button class="btn btn-ghost" onclick="saveAsExample()" title="Save current workspace as a named example">⭐ Save as Example</button>
+    <button class="btn btn-ghost" onclick="saveWorkspace()" title="Save workspace to file">💾 Save</button>
+    <button class="btn btn-ghost" onclick="document.getElementById('wsFileInput').click()" title="Load workspace from file">📂 Load</button>
+    <input type="file" id="wsFileInput" accept=".xml" style="display:none" onchange="loadWorkspaceFromFile(event)">
+    <button class="btn btn-ghost" onclick="showHelp()" title="Help & documentation">❓ Help</button>
+  </div>
+</header>
+
+<!-- ROBOT CONNECTION BAR -->
+<div class="connect-bar">
+  <span class="connect-label">🤖 Robot:</span>
+  <select id="robotIp" class="connect-input" style="cursor:pointer;">
+    <option value="192.168.0.111">🤖 Robot1-111 — 192.168.0.111</option>
+    <option value="192.168.0.113">🤖 Robot2-113 — 192.168.0.113</option>
+    <option value="192.168.0.114">🤖 Robot3-114 — 192.168.0.114</option>
+    <option value="192.168.0.115">🤖 Robot4-115 — 192.168.0.115</option>
+    <option value="192.168.0.118">🤖 Robot5-118 — 192.168.0.118</option>
+    <option value="192.168.0.121">🤖 Robot6-121 — 192.168.0.121</option>
+    <option value="192.168.0.124">🤖 Robot7-124 — 192.168.0.124</option>
+  </select>
+  <button class="connect-pill" id="connectBtn" onclick="toggleConnect()">
+    <div class="connect-dot"></div>
+    <span id="connectLabel">Connect</span>
+  </button>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <button class="btn btn-run" id="runBtn" onclick="runProgram()">
+      <span>▶</span> Run
+    </button>
+    <button class="btn btn-send" id="sendBtn" onclick="sendToRobot()" style="display:none;">
+      🚀 Send to Robot
+    </button>
+    <button class="btn btn-robot-stop" id="robotStopBtn" onclick="stopRobot()" style="display:none;">
+      ⛔ Stop Robot
+    </button>
+  </div>
+</div>
+
+<div class="main">
+  <div id="blockly-div"></div>
+
+  <!-- FLOATING PANES -->
+
+  <!-- Simulator -->
+  <div class="fpane" id="pane-sim" style="top:10px;right:10px;width:270px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-sim','chip-sim')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-sim')"></button>
+      </div>
+      <span class="fpane-title">🤖 Simulator</span>
+    </div>
+    <div class="fpane-body">
+      <div class="arena" id="arena">
+        <div class="arena-grid"></div>
+        <div class="obstacle" style="width:30px;height:30px;left:60px;top:30px;"></div>
+        <div class="obstacle" style="width:40px;height:20px;left:180px;top:80px;"></div>
+        <div class="obstacle" style="width:20px;height:40px;left:100px;top:130px;"></div>
+        <div id="robot">
+          <div class="robot-body">
+            <div class="robot-led-ring" id="ledRing"></div>
+            <div class="robot-eye"></div>
+            <div class="robot-dir"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- LEDs -->
+  <div class="fpane" id="pane-led" style="top:10px;right:290px;width:300px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-led','chip-led')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-led')"></button>
+      </div>
+      <span class="fpane-title">💡 LEDs</span>
+      <button class="btn-copy" onclick="setAllLeds(true)" style="color:var(--accent3);border-color:var(--accent3);">all on</button>
+      <button class="btn-copy" onclick="setAllLeds(false)">all off</button>
+    </div>
+    <div class="fpane-body">
+      <div style="font-family:'Space Mono',monospace;font-size:.57rem;color:var(--text-muted);margin-bottom:5px;">BINARY — LED1·LED3·LED5·LED7</div>
+      <div class="led-grid" id="ledGridBinary"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:.57rem;color:var(--text-muted);margin:8px 0 5px;">RGB — LED2·LED4·LED6·LED8</div>
+      <div id="ledGridRgb"></div>
+      <div style="font-family:'Space Mono',monospace;font-size:.57rem;color:var(--text-muted);margin:8px 0 5px;">PI-PUCK — LED1·LED2·LED3</div>
+      <div style="display:flex;gap:6px;">
+        <select id="piLed0" onchange="setPiLed(0)"
+          style="flex:1;padding:4px;background:#21262d;border:1px solid #30363d;
+                 color:#e6edf3;font-family:'Space Mono',monospace;font-size:0.6rem;
+                 border-radius:5px;cursor:pointer;">
+          <option value="0">⬛ Off</option>
+          <option value="1">🔴 Red</option>
+          <option value="2">🟢 Green</option>
+          <option value="4">🔵 Blue</option>
+          <option value="3">🟡 Yellow</option>
+          <option value="5">🟣 Magenta</option>
+          <option value="6">🩵 Cyan</option>
+          <option value="7">⬜ White</option>
+        </select>
+        <select id="piLed1" onchange="setPiLed(1)"
+          style="flex:1;padding:4px;background:#21262d;border:1px solid #30363d;
+                 color:#e6edf3;font-family:'Space Mono',monospace;font-size:0.6rem;
+                 border-radius:5px;cursor:pointer;">
+          <option value="0">⬛ Off</option>
+          <option value="1">🔴 Red</option>
+          <option value="2">🟢 Green</option>
+          <option value="4">🔵 Blue</option>
+          <option value="3">🟡 Yellow</option>
+          <option value="5">🟣 Magenta</option>
+          <option value="6">🩵 Cyan</option>
+          <option value="7">⬜ White</option>
+        </select>
+        <select id="piLed2" onchange="setPiLed(2)"
+          style="flex:1;padding:4px;background:#21262d;border:1px solid #30363d;
+                 color:#e6edf3;font-family:'Space Mono',monospace;font-size:0.6rem;
+                 border-radius:5px;cursor:pointer;">
+          <option value="0">⬛ Off</option>
+          <option value="1">🔴 Red</option>
+          <option value="2">🟢 Green</option>
+          <option value="4">🔵 Blue</option>
+          <option value="3">🟡 Yellow</option>
+          <option value="5">🟣 Magenta</option>
+          <option value="6">🩵 Cyan</option>
+          <option value="7">⬜ White</option>
+        </select>
+      </div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Sensors -->
+  <div class="fpane" id="pane-sensors" style="top:230px;right:10px;width:270px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-sensors','chip-sensors')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-sensors')"></button>
+      </div>
+      <span class="fpane-title">📡 Sensors</span>
+      <span class="sensor-source" id="sensorSource">SIM</span>
+    </div>
+    <div class="fpane-body">
+      <div class="sensors-grid">
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps0 FRONT-R</span><span class="sensor-val" id="sv0">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s0" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps7 FRONT-L</span><span class="sensor-val" id="sv7">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s7" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps1 CORNER-R</span><span class="sensor-val" id="sv1">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s1" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps6 CORNER-L</span><span class="sensor-val" id="sv6">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s6" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps2 SIDE-R</span><span class="sensor-val" id="sv2">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s2" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps5 SIDE-L</span><span class="sensor-val" id="sv5">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s5" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps3 BACK-R</span><span class="sensor-val" id="sv3">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s3" style="width:5%"></div></div></div>
+        <div class="sensor-bar"><div class="sensor-row-top"><span class="sensor-name">ps4 BACK-L</span><span class="sensor-val" id="sv4">0</span></div><div class="sensor-track"><div class="sensor-fill" id="s4" style="width:5%"></div></div></div>
+      </div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Code -->
+  <div class="fpane" id="pane-code" style="bottom:40px;left:10px;width:320px;height:210px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-code','chip-code')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-code')"></button>
+      </div>
+      <span class="fpane-title">⚙ Generated Python</span>
+      <button class="btn-copy" id="copyBtn" onclick="copyCode()">copy</button>
+    </div>
+    <div class="fpane-body" style="padding:6px;">
+      <div class="code-output" id="codeOutput"><span class="cmt"># Drag blocks to start!</span></div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Log -->
+  <div class="fpane" id="pane-log" style="bottom:40px;left:340px;width:270px;height:190px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-log','chip-log')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-log')"></button>
+      </div>
+      <span class="fpane-title">📋 Log</span>
+      <button class="btn-copy" onclick="document.getElementById('logSection').innerHTML=''">clear</button>
+    </div>
+    <div class="fpane-body">
+      <div id="logSection"></div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+</div>
+
+  <!-- Speaker -->
+  <div class="fpane" id="pane-speaker" style="top:10px;right:590px;width:220px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-speaker','chip-speaker')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-speaker')"></button>
+      </div>
+      <span class="fpane-title">🔊 Speaker</span>
+    </div>
+    <div class="fpane-body" id="speakerPaneBody">
+      <!-- built by JS -->
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Wheels -->
+  <div class="fpane" id="pane-wheels" style="top:10px;left:10px;width:280px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-wheels','chip-wheels')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-wheels')"></button>
+      </div>
+      <span class="fpane-title">🎮 Wheels</span>
+    </div>
+    <div class="fpane-body" id="wheelsPaneBody">
+      <!-- built by JS -->
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Ground Sensor -->
+  <div class="fpane" id="pane-ground" style="top:230px;right:290px;width:260px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-ground','chip-ground')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-ground')"></button>
+      </div>
+      <span class="fpane-title">🌱 Ground Sensor</span>
+      <span class="sensor-source" id="groundSource">SIM</span>
+    </div>
+    <div class="fpane-body" id="groundPaneBody">
+      <!-- built by JS -->
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Camera -->
+  <div class="fpane" id="pane-camera" style="top:10px;left:300px;width:380px;height:360px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-camera','chip-camera')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-camera')"></button>
+      </div>
+      <span class="fpane-title">📷 Camera</span>
+      <span class="sensor-source" id="cameraSource">OFF</span>
+    </div>
+    <div class="fpane-body" id="cameraPaneBody" style="padding:8px;display:flex;flex-direction:column;align-items:center;gap:7px;background:#111;">
+
+      <!-- Camera selector + controls -->
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:center;">
+        <select id="camDeviceSelect" style="padding:4px 8px;background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:4px;font-family:monospace;font-size:0.7rem;">
+          <option value="0">📷 video0 — Pi-Puck (top)</option>
+          <option value="1">📷 video1 — e-puck (front)</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="camDoOpen()" style="padding:5px 16px;background:#238636;color:#fff;border:none;border-radius:4px;font-family:monospace;font-size:0.72rem;cursor:pointer;font-weight:bold;">▶ Open</button>
+        <button onclick="camDoClose()" style="padding:5px 16px;background:#da3633;color:#fff;border:none;border-radius:4px;font-family:monospace;font-size:0.72rem;cursor:pointer;font-weight:bold;">■ Close</button>
+        <span id="camStatus" style="font-family:monospace;font-size:0.65rem;color:#8b949e;">idle</span>
+      </div>
+
+      <div id="camPlaceholder" style="color:#555;font-family:monospace;font-size:0.65rem;text-align:center;padding:20px;">
+        📷 Select camera and press Open
+      </div>
+      <img id="camLiveImg" style="display:none;width:100%;border-radius:4px;background:#000;" alt="Camera">
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <script>
+  // OpenCV MJPEG stream — server.py captures with cv2 and serves /camera/stream.
+  // Browser points <img> directly at the stream — no polling, native MJPEG support.
+  function _camBase() {
+    var ip = (document.getElementById('robotIp') || {value:'192.168.0.111'}).value.trim();
+    return 'http://' + ip + ':5000';
+  }
+
+  function camDoOpen() {
+    var device = parseInt(document.getElementById('camDeviceSelect').value || '1');
+    document.getElementById('camStatus').textContent = 'starting...';
+    document.getElementById('camStatus').style.color = '#e3b341';
+    document.getElementById('camLiveImg').style.display = 'none';
+    document.getElementById('camPlaceholder').style.display = '';
+
+    fetch(_camBase() + '/camera/open?device=' + device)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        var img = document.getElementById('camLiveImg');
+        img.src = _camBase() + '/camera/stream';
+        img.style.display = 'block';
+        document.getElementById('camPlaceholder').style.display = 'none';
+        document.getElementById('camStatus').textContent = 'video' + d.device + ' live ●';
+        document.getElementById('camStatus').style.color = '#3fb950';
+        document.getElementById('cameraSource').textContent = 'LIVE';
+        document.getElementById('cameraSource').classList.add('live');
+      } else {
+        document.getElementById('camStatus').textContent = 'error: ' + d.error;
+        document.getElementById('camStatus').style.color = '#f85149';
+      }
+    })
+    .catch(function(e){
+      document.getElementById('camStatus').textContent = 'failed: ' + e;
+      document.getElementById('camStatus').style.color = '#f85149';
+    });
+  }
+
+  function camDoClose() {
+    var device = parseInt(document.getElementById('camDeviceSelect').value || '1');
+    var img = document.getElementById('camLiveImg');
+    img.src = '';
+    img.style.display = 'none';
+    document.getElementById('camPlaceholder').style.display = '';
+    document.getElementById('camStatus').textContent = 'closed';
+    document.getElementById('camStatus').style.color = '#8b949e';
+    document.getElementById('cameraSource').textContent = 'OFF';
+    document.getElementById('cameraSource').classList.remove('live');
+    fetch(_camBase() + '/camera/close?device=' + device).catch(function(){});
+  }
+  </script>
+
+  <!-- ToF Distance Sensor -->
+  <div class="fpane" id="pane-tof" style="top:10px;right:10px;width:220px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-tof','chip-tof')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-tof')"></button>
+      </div>
+      <span class="fpane-title">📡 ToF Distance</span>
+      <span class="sensor-source" id="tofSource">SIM</span>
+    </div>
+    <div class="fpane-body" id="tofPaneBody">
+      <!-- built by JS -->
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Range and Bearing pane -->
+  <div class="fpane" id="pane-rab" style="top:10px;right:240px;width:240px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-rab','chip-rab')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-rab')"></button>
+      </div>
+      <span class="fpane-title">📶 Range &amp; Bearing</span>
+      <span class="sensor-source" id="rabSource">OFF</span>
+    </div>
+    <div class="fpane-body" id="rabPaneBody" style="padding:8px;">
+
+      <!-- Mode selector -->
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button id="rabBtnOff" onclick="rabSetMode(null)"
+          style="flex:1;padding:4px;font-family:monospace;font-size:0.7rem;
+                 background:#da3633;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;">
+          ■ Off
+        </button>
+        <button id="rabBtnRx" onclick="rabSetMode('rx')"
+          style="flex:1;padding:4px;font-family:monospace;font-size:0.7rem;
+                 background:#30363d;color:#e6edf3;border:1px solid #484f58;border-radius:4px;cursor:pointer;">
+          📥 RX
+        </button>
+        <button id="rabBtnTx" onclick="rabSetMode('tx')"
+          style="flex:1;padding:4px;font-family:monospace;font-size:0.7rem;
+                 background:#30363d;color:#e6edf3;border:1px solid #484f58;border-radius:4px;cursor:pointer;">
+          📤 TX
+        </button>
+      </div>
+
+      <!-- Range slider (always visible when mode is active) -->
+      <div id="rabRangeSection" style="display:none;margin-bottom:8px;background:#161b22;border-radius:4px;padding:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+          <span style="font-family:monospace;font-size:0.65rem;color:#8b949e;">TX RANGE</span>
+          <span style="font-family:monospace;font-size:0.75rem;color:#e3b341;font-weight:bold;" id="rabRangeLabel">~41 cm</span>
+        </div>
+        <input type="range" id="rabRangeSlider" min="0" max="255" value="150"
+          oninput="rabUpdateRangeLabel(this.value)"
+          onchange="rabSetRange(this.value)"
+          style="width:100%;accent-color:#e3b341;" />
+        <div style="display:flex;justify-content:space-between;">
+          <span style="font-family:monospace;font-size:0.6rem;color:#8b949e;">0 = ~1m</span>
+          <span style="font-family:monospace;font-size:0.6rem;color:#8b949e;">255 = off</span>
+        </div>
+      </div>
+
+      <!-- TX data input (shown in TX mode) -->
+      <div id="rabTxSection" style="display:none;margin-bottom:8px;border:1px solid #30363d;border-radius:4px;padding:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <div style="font-family:monospace;font-size:0.65rem;color:#8b949e;">TX DATA</div>
+          <div style="display:flex;gap:2px;">
+            <button id="rabFmtHex" onclick="rabSetFormat('hex')"
+              style="padding:1px 6px;font-family:monospace;font-size:0.6rem;border-radius:3px;cursor:pointer;
+                     background:#1f6feb;color:#fff;border:1px solid #388bfd;font-weight:bold;">HEX</button>
+            <button id="rabFmtDec" onclick="rabSetFormat('dec')"
+              style="padding:1px 6px;font-family:monospace;font-size:0.6rem;border-radius:3px;cursor:pointer;
+                     background:#30363d;color:#8b949e;border:1px solid #484f58;">DEC</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <span style="font-family:monospace;font-size:0.7rem;color:#8b949e;">Hi</span>
+          <input id="rabTxHi" type="text" value="AA" maxlength="3"
+            style="width:42px;padding:3px;background:#161b22;color:#e6edf3;border:1px solid #30363d;
+                   border-radius:3px;font-family:monospace;font-size:0.75rem;text-align:center;text-transform:uppercase;" />
+          <span style="font-family:monospace;font-size:0.7rem;color:#8b949e;">Lo</span>
+          <input id="rabTxLo" type="text" value="FF" maxlength="3"
+            style="width:42px;padding:3px;background:#161b22;color:#e6edf3;border:1px solid #30363d;
+                   border-radius:3px;font-family:monospace;font-size:0.75rem;text-align:center;text-transform:uppercase;" />
+          <button onclick="rabSendTx()"
+            style="flex:1;padding:3px 6px;background:#238636;color:#fff;border:none;border-radius:3px;
+                   font-family:monospace;font-size:0.7rem;cursor:pointer;font-weight:bold;">Send</button>
+        </div>
+        <div style="font-family:monospace;font-size:0.65rem;color:#8b949e;margin-top:3px;" id="rabTxHint">0x00–0xFF per field</div>
+        <div style="font-family:monospace;font-size:0.65rem;color:#3fb950;margin-top:2px;" id="rabTxStatus">—</div>
+      </div>
+
+      <!-- RX data display (shown in RX mode) -->
+      <div id="rabRxSection" style="display:none;">
+
+        <!-- Compass bearing visual -->
+        <div style="display:flex;justify-content:center;margin-bottom:6px;">
+          <div style="position:relative;width:80px;height:80px;">
+            <canvas id="rabCompass" width="80" height="80"></canvas>
+          </div>
+        </div>
+
+        <!-- Values grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div style="background:#161b22;border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">BEARING</div>
+            <div style="font-family:monospace;font-size:1.1rem;color:#58a6ff;font-weight:bold;" id="rabBearing">—</div>
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">degrees</div>
+          </div>
+          <div style="background:#161b22;border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">RANGE</div>
+            <div style="font-family:monospace;font-size:1.1rem;color:#3fb950;font-weight:bold;" id="rabRange">—</div>
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">mm</div>
+          </div>
+          <div style="background:#161b22;border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">DATA</div>
+            <div style="font-family:monospace;font-size:1.1rem;color:#e3b341;font-weight:bold;" id="rabData">—</div>
+          </div>
+          <div style="background:#161b22;border-radius:4px;padding:6px;text-align:center;">
+            <div style="font-family:monospace;font-size:0.6rem;color:#8b949e;">SENSOR</div>
+            <div style="font-family:monospace;font-size:1.1rem;color:#bc8cff;font-weight:bold;" id="rabSensor">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Off / no-data placeholder -->
+      <div id="rabOffSection" style="text-align:center;padding:12px 0;font-family:monospace;font-size:0.7rem;color:#8b949e;">
+        Select RX or TX mode to begin
+      </div>
+
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- IMU -->
+  <div class="fpane" id="pane-imu" style="top:230px;left:10px;width:300px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-imu','chip-imu')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-imu')"></button>
+      </div>
+      <span class="fpane-title">🧭 IMU</span>
+      <div style="margin-left:auto;display:flex;gap:5px;">
+        <button onclick="imuCalibrate()" title="Recalibrate accelerometer (keep still)"
+          style="background:none;border:1px solid #484f58;color:#e3b341;font-family:'Space Mono',monospace;
+                 font-size:0.6rem;border-radius:4px;cursor:pointer;padding:2px 6px;">⊙ CAL</button>
+      </div>
+    </div>
+    <div class="fpane-body" style="padding:8px 12px;">
+
+      <!-- ── 3D Robot visualisation ── -->
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin-bottom:6px;">
+        3D ORIENTATION
+        <span id="imuStatus" style="margin-left:8px;color:var(--text-muted);">SIM</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+
+        <!-- Robot 3D stage -->
+        <div style="flex-shrink:0;width:120px;height:120px;display:flex;align-items:center;justify-content:center;
+                    background:#0d1117;border-radius:8px;border:1px solid #21262d;perspective:300px;overflow:hidden;">
+          <!-- Outer tilt wrapper: roll + pitch via CSS 3D -->
+          <div id="robotTiltWrap" style="transform-style:preserve-3d;transition:transform 0.12s ease-out;">
+            <!-- Shadow on ground plane -->
+            <div id="robotShadow" style="position:absolute;width:62px;height:62px;border-radius:50%;
+                 background:radial-gradient(ellipse,rgba(88,166,255,0.12) 0%,transparent 70%);
+                 top:50%;left:50%;transform:translate(-50%,-50%) translateZ(-40px);pointer-events:none;"></div>
+            <!-- Robot SVG — e-puck top-down silhouette -->
+            <svg id="robotSvg" width="90" height="90" viewBox="-45 -45 90 90"
+                 style="filter:drop-shadow(0 0 6px rgba(88,166,255,0.4));display:block;">
+              <!-- Body circle -->
+              <circle cx="0" cy="0" r="36" fill="#1c2128" stroke="#58a6ff" stroke-width="2"/>
+              <!-- Camera bump (front = top) -->
+              <rect x="-8" y="-39" width="16" height="8" rx="3" fill="#58a6ff" opacity="0.9"/>
+              <!-- IR sensor dots -->
+              <circle cx="0"   cy="-33" r="3" fill="#e3b341"/>
+              <circle cx="22"  cy="-24" r="3" fill="#e3b341"/>
+              <circle cx="33"  cy="-5"  r="3" fill="#e3b341"/>
+              <circle cx="33"  cy="12"  r="3" fill="#e3b341"/>
+              <circle cx="-22" cy="-24" r="3" fill="#e3b341"/>
+              <circle cx="-33" cy="-5"  r="3" fill="#e3b341"/>
+              <circle cx="-33" cy="12"  r="3" fill="#e3b341"/>
+              <circle cx="0"   cy="34"  r="3" fill="#e3b341"/>
+              <!-- Wheel bumps -->
+              <rect x="32"  y="-12" width="10" height="22" rx="4" fill="#30363d" stroke="#484f58" stroke-width="1"/>
+              <rect x="-42" y="-12" width="10" height="22" rx="4" fill="#30363d" stroke="#484f58" stroke-width="1"/>
+              <!-- Centre LED ring -->
+              <circle cx="0" cy="0" r="10" fill="none" stroke="#3fb950" stroke-width="1.5" opacity="0.6"/>
+              <circle id="robotCenterLed" cx="0" cy="0" r="5" fill="#3fb950" opacity="0.5"/>
+              <!-- Front direction arrow -->
+              <polygon points="0,-18 5,-10 -5,-10" fill="#58a6ff" opacity="0.7"/>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Roll / Pitch / Yaw readouts -->
+        <div style="flex:1;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;">
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">ROLL</div>
+              <div id="imuRoll"  style="font-family:'Space Mono',monospace;font-size:0.95rem;font-weight:bold;color:#58a6ff;">0.0°</div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">PITCH</div>
+              <div id="imuPitch" style="font-family:'Space Mono',monospace;font-size:0.95rem;font-weight:bold;color:#58a6ff;">0.0°</div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">YAW RATE</div>
+              <div id="imuYawRate" style="font-family:'Space Mono',monospace;font-size:0.95rem;font-weight:bold;color:#e3b341;">0.0°/s</div>
+            </div>
+            <div>
+              <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">|g| TOTAL</div>
+              <div id="imuGTotal" style="font-family:'Space Mono',monospace;font-size:0.95rem;font-weight:bold;color:#3fb950;">1.00g</div>
+            </div>
+          </div>
+          <!-- Motion activity bar -->
+          <div style="margin-top:7px;">
+            <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);margin-bottom:2px;">MOTION</div>
+            <div style="height:6px;background:#21262d;border-radius:3px;overflow:hidden;">
+              <div id="imuMotionBar" style="height:100%;width:0%;background:linear-gradient(90deg,#3fb950,#e3b341,#f85149);border-radius:3px;transition:width 0.1s;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accelerometer bars ── -->
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin-bottom:4px;">ACCELEROMETER (g)</div>
+      <div>
+        <div class="imu-row"><span class="imu-axis">X</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuAccXn"></div><div class="imu-fill-pos" id="imuAccXp"></div></div><span class="imu-val" id="imuAccXv">0.000</span></div>
+        <div class="imu-row"><span class="imu-axis">Y</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuAccYn"></div><div class="imu-fill-pos" id="imuAccYp"></div></div><span class="imu-val" id="imuAccYv">0.000</span></div>
+        <div class="imu-row"><span class="imu-axis">Z</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuAccZn"></div><div class="imu-fill-pos" id="imuAccZp"></div></div><span class="imu-val" id="imuAccZv">0.000</span></div>
+      </div>
+
+      <!-- ── Gyroscope bars ── -->
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin:7px 0 4px;">GYROSCOPE (°/s)</div>
+      <div>
+        <div class="imu-row"><span class="imu-axis">X</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuGyroXn" style="background:#e3b341;"></div><div class="imu-fill-pos" id="imuGyroXp" style="background:#e3b341;"></div></div><span class="imu-val" id="imuGyroXv">0.0</span></div>
+        <div class="imu-row"><span class="imu-axis">Y</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuGyroYn" style="background:#e3b341;"></div><div class="imu-fill-pos" id="imuGyroYp" style="background:#e3b341;"></div></div><span class="imu-val" id="imuGyroYv">0.0</span></div>
+        <div class="imu-row"><span class="imu-axis">Z</span><div class="imu-track"><div class="imu-center"></div><div class="imu-fill-neg" id="imuGyroZn" style="background:#e3b341;"></div><div class="imu-fill-pos" id="imuGyroZp" style="background:#e3b341;"></div></div><span class="imu-val" id="imuGyroZv">0.0</span></div>
+      </div>
+
+      <!-- ── Compass ── -->
+      <div style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--text-muted);margin:10px 0 6px;">
+        COMPASS
+        <button onclick="magCalibrate()" title="Spin robot 360° — takes 10s"
+          style="margin-left:8px;background:none;border:1px solid #484f58;color:#e3b341;
+                 font-family:'Space Mono',monospace;font-size:0.55rem;border-radius:4px;
+                 cursor:pointer;padding:1px 5px;">⊙ CAL</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <div style="flex-shrink:0;">
+          <svg id="compassSvg" width="72" height="72" viewBox="-36 -36 72 72">
+            <circle cx="0" cy="0" r="34" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+            <text x="0" y="-23" text-anchor="middle" font-family="monospace" font-size="7" fill="#58a6ff">N</text>
+            <text x="23" y="3"  text-anchor="middle" font-family="monospace" font-size="6" fill="#484f58">E</text>
+            <text x="0" y="28"  text-anchor="middle" font-family="monospace" font-size="6" fill="#484f58">S</text>
+            <text x="-23" y="3" text-anchor="middle" font-family="monospace" font-size="6" fill="#484f58">W</text>
+            <line x1="0" y1="-34" x2="0" y2="-28" stroke="#30363d" stroke-width="1"/>
+            <line x1="34" y1="0"  x2="28" y2="0"  stroke="#30363d" stroke-width="1"/>
+            <line x1="0" y1="34"  x2="0" y2="28"  stroke="#30363d" stroke-width="1"/>
+            <line x1="-34" y1="0" x2="-28" y2="0" stroke="#30363d" stroke-width="1"/>
+            <g id="compassNeedle" transform="rotate(0)">
+              <polygon points="0,-26 4,0 0,6 -4,0" fill="#f85149"/>
+              <polygon points="0,26 4,0 0,6 -4,0" fill="#484f58"/>
+            </g>
+            <circle cx="0" cy="0" r="3" fill="#e6edf3"/>
+          </svg>
+        </div>
+        <div style="flex:1;">
+          <div id="magHeading" style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:bold;color:#58a6ff;">---°</div>
+          <div id="magDir"     style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--text-muted);margin-bottom:4px;">---</div>
+          <div style="font-family:'Space Mono',monospace;font-size:0.58rem;color:var(--text-muted);">
+            <span id="magXYZ">X:-- Y:-- Z:-- µT</span>
+          </div>
+          <div id="magStatus" style="font-family:'Space Mono',monospace;font-size:0.58rem;color:var(--text-muted);margin-top:2px;">not available</div>
+        </div>
+      </div>
+
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Microphones -->
+  <div class="fpane" id="pane-mic" style="top:680px;left:10px;width:290px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-mic','chip-mic')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-mic')"></button>
+      </div>
+      <span class="fpane-title">🎤 Microphones</span>
+      <div id="micClap" style="margin-left:auto;font-family:'Space Mono',monospace;font-size:0.65rem;
+           color:#f85149;opacity:0;transition:opacity 0.15s;font-weight:bold;">● CLAP</div>
+    </div>
+    <div class="fpane-body" style="padding:8px 12px;">
+
+      <!-- Sound direction + robot diagram -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+
+        <!-- Robot top-view with mic glow -->
+        <div style="flex-shrink:0;width:110px;height:110px;position:relative;
+                    background:#0d1117;border-radius:8px;border:1px solid #21262d;
+                    display:flex;align-items:center;justify-content:center;">
+          <svg width="100" height="100" viewBox="-50 -50 100 100">
+            <!-- Body -->
+            <circle cx="0" cy="0" r="34" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+            <!-- Mic glow halos (brightness driven by JS) -->
+            <circle id="micGlow0" cx="0"   cy="-34" r="10" fill="#3fb950" opacity="0" filter="url(#micBlur)"/>
+            <circle id="micGlow1" cx="-34" cy="0"   r="10" fill="#3fb950" opacity="0" filter="url(#micBlur)"/>
+            <circle id="micGlow2" cx="0"   cy="34"  r="10" fill="#3fb950" opacity="0" filter="url(#micBlur)"/>
+            <circle id="micGlow3" cx="34"  cy="0"   r="10" fill="#3fb950" opacity="0" filter="url(#micBlur)"/>
+            <!-- Blur filter -->
+            <defs>
+              <filter id="micBlur" x="-100%" y="-100%" width="300%" height="300%">
+                <feGaussianBlur stdDeviation="5"/>
+              </filter>
+            </defs>
+            <!-- Camera bump (front) -->
+            <rect x="-7" y="-40" width="14" height="7" rx="2" fill="#58a6ff" opacity="0.7"/>
+            <!-- Mic dot indicators -->
+            <circle id="micDot0" cx="0"   cy="-34" r="4" fill="#3fb950" opacity="0.3"/>
+            <circle id="micDot1" cx="-34" cy="0"   r="4" fill="#3fb950" opacity="0.3"/>
+            <circle id="micDot2" cx="0"   cy="34"  r="4" fill="#3fb950" opacity="0.3"/>
+            <circle id="micDot3" cx="34"  cy="0"   r="4" fill="#3fb950" opacity="0.3"/>
+            <!-- Labels -->
+            <text x="0"   y="-41" text-anchor="middle" font-family="monospace" font-size="5" fill="#8b949e">F</text>
+            <text x="-44" y="2"   text-anchor="middle" font-family="monospace" font-size="5" fill="#8b949e">L</text>
+            <text x="0"   y="46"  text-anchor="middle" font-family="monospace" font-size="5" fill="#8b949e">B</text>
+            <text x="44"  y="2"   text-anchor="middle" font-family="monospace" font-size="5" fill="#8b949e">R</text>
+            <!-- Sound direction arrow -->
+            <g id="micDirArrow" opacity="0">
+              <line id="micDirLine" x1="0" y1="0" x2="0" y2="-22"
+                    stroke="#e3b341" stroke-width="2" stroke-linecap="round"/>
+              <polygon id="micDirHead" points="0,-26 3,-20 -3,-20" fill="#e3b341"/>
+            </g>
+            <!-- Centre -->
+            <circle cx="0" cy="0" r="5" fill="#21262d" stroke="#30363d" stroke-width="1"/>
+          </svg>
+        </div>
+
+        <!-- Direction readout -->
+        <div style="flex:1;">
+          <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);margin-bottom:3px;">LOUDEST SOURCE</div>
+          <div id="micDirLabel" style="font-family:'Space Mono',monospace;font-size:1.1rem;font-weight:bold;color:#e3b341;">---</div>
+          <div id="micDirDeg"   style="font-family:'Space Mono',monospace;font-size:0.7rem;color:var(--text-muted);">---°</div>
+          <div style="margin-top:8px;font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">PEAK LEVEL</div>
+          <div id="micPeakVal"  style="font-family:'Space Mono',monospace;font-size:0.85rem;font-weight:bold;color:#58a6ff;">0</div>
+        </div>
+      </div>
+
+      <!-- 4 VU bars side by side -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;">
+        <!-- Each channel: label, vertical bar, value -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#8b949e;">FRONT</div>
+          <div style="position:relative;width:22px;height:70px;background:#0d1117;border-radius:3px;border:1px solid #21262d;overflow:hidden;">
+            <div id="micPeak0" style="position:absolute;width:100%;height:2px;background:#e3b341;bottom:0%;transition:bottom 0.8s;"></div>
+            <div id="micBar0"  style="position:absolute;bottom:0;width:100%;height:0%;
+                 background:linear-gradient(to top,#3fb950,#e3b341 70%,#f85149 90%);border-radius:2px;transition:height 0.08s;"></div>
+          </div>
+          <div id="micVal0" style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#58a6ff;">0</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#8b949e;">LEFT</div>
+          <div style="position:relative;width:22px;height:70px;background:#0d1117;border-radius:3px;border:1px solid #21262d;overflow:hidden;">
+            <div id="micPeak1" style="position:absolute;width:100%;height:2px;background:#e3b341;bottom:0%;transition:bottom 0.8s;"></div>
+            <div id="micBar1"  style="position:absolute;bottom:0;width:100%;height:0%;
+                 background:linear-gradient(to top,#3fb950,#e3b341 70%,#f85149 90%);border-radius:2px;transition:height 0.08s;"></div>
+          </div>
+          <div id="micVal1" style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#58a6ff;">0</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#8b949e;">BACK</div>
+          <div style="position:relative;width:22px;height:70px;background:#0d1117;border-radius:3px;border:1px solid #21262d;overflow:hidden;">
+            <div id="micPeak2" style="position:absolute;width:100%;height:2px;background:#e3b341;bottom:0%;transition:bottom 0.8s;"></div>
+            <div id="micBar2"  style="position:absolute;bottom:0;width:100%;height:0%;
+                 background:linear-gradient(to top,#3fb950,#e3b341 70%,#f85149 90%);border-radius:2px;transition:height 0.08s;"></div>
+          </div>
+          <div id="micVal2" style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#58a6ff;">0</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+          <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#8b949e;">RIGHT</div>
+          <div style="position:relative;width:22px;height:70px;background:#0d1117;border-radius:3px;border:1px solid #21262d;overflow:hidden;">
+            <div id="micPeak3" style="position:absolute;width:100%;height:2px;background:#e3b341;bottom:0%;transition:bottom 0.8s;"></div>
+            <div id="micBar3"  style="position:absolute;bottom:0;width:100%;height:0%;
+                 background:linear-gradient(to top,#3fb950,#e3b341 70%,#f85149 90%);border-radius:2px;transition:height 0.08s;"></div>
+          </div>
+          <div id="micVal3" style="font-family:'Space Mono',monospace;font-size:0.55rem;color:#58a6ff;">0</div>
+        </div>
+      </div>
+
+      <!-- Overall level bar -->
+      <div style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);margin-bottom:3px;">OVERALL LEVEL</div>
+      <div style="height:7px;background:#0d1117;border-radius:4px;border:1px solid #21262d;overflow:hidden;">
+        <div id="micOverallBar" style="height:100%;width:0%;background:linear-gradient(90deg,#3fb950,#e3b341 70%,#f85149 90%);border-radius:4px;transition:width 0.08s;"></div>
+      </div>
+
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+  <!-- Battery -->
+  <div class="fpane" id="pane-battery" style="top:230px;right:290px;width:240px;">
+    <div class="fpane-header">
+      <div class="fpane-lights">
+        <button class="tl red"    onclick="closePane('pane-battery','chip-battery')"></button>
+        <button class="tl yellow" onclick="collapsePane('pane-battery')"></button>
+      </div>
+      <span class="fpane-title">🔋 Battery</span>
+      <button onclick="refreshBattery()" title="Refresh"
+        style="margin-left:auto;background:none;border:none;color:#58a6ff;
+               font-size:0.85rem;cursor:pointer;padding:0 4px;">↻</button>
+    </div>
+    <div class="fpane-body" style="padding:10px 12px;">
+      <div style="display:flex;justify-content:space-around;align-items:flex-end;gap:12px;margin-bottom:8px;">
+
+        <!-- E-PUCK battery shape -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:5px;">
+          <span style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">E-PUCK</span>
+          <div style="position:relative;width:52px;height:100px;">
+            <!-- battery terminal nub -->
+            <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);
+                        width:18px;height:6px;background:#30363d;border-radius:3px 3px 0 0;"></div>
+            <!-- battery body -->
+            <div style="position:absolute;top:6px;left:0;right:0;bottom:0;
+                        border:2px solid #30363d;border-radius:4px;overflow:hidden;background:#0d1117;">
+              <!-- fill — grows from bottom -->
+              <div id="batEpuckBar"
+                   style="position:absolute;bottom:0;left:0;right:0;height:0%;
+                          background:#3fb950;border-radius:0 0 2px 2px;
+                          transition:height 0.6s,background 0.6s;"></div>
+              <!-- segment lines -->
+              <div style="position:absolute;bottom:25%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <div style="position:absolute;bottom:50%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <div style="position:absolute;bottom:75%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <!-- percentage label -->
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                <span id="batEpuckPct"
+                      style="font-family:'Space Mono',monospace;font-size:0.75rem;font-weight:bold;
+                             color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000;">--%</span>
+              </div>
+            </div>
+          </div>
+          <span id="batEpuckV" style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--text-muted);">--V</span>
+        </div>
+
+        <!-- EXTENSION battery shape -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:5px;">
+          <span style="font-family:'Space Mono',monospace;font-size:0.55rem;color:var(--text-muted);">EXTENSION</span>
+          <div style="position:relative;width:52px;height:100px;">
+            <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);
+                        width:18px;height:6px;background:#30363d;border-radius:3px 3px 0 0;"></div>
+            <div style="position:absolute;top:6px;left:0;right:0;bottom:0;
+                        border:2px solid #30363d;border-radius:4px;overflow:hidden;background:#0d1117;">
+              <div id="batExtBar"
+                   style="position:absolute;bottom:0;left:0;right:0;height:0%;
+                          background:#3fb950;border-radius:0 0 2px 2px;
+                          transition:height 0.6s,background 0.6s;"></div>
+              <div style="position:absolute;bottom:25%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <div style="position:absolute;bottom:50%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <div style="position:absolute;bottom:75%;left:0;right:0;height:1px;background:rgba(255,255,255,0.07);"></div>
+              <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                <span id="batExtPct"
+                      style="font-family:'Space Mono',monospace;font-size:0.75rem;font-weight:bold;
+                             color:#fff;text-shadow:0 1px 4px #000,0 0 8px #000;">--%</span>
+              </div>
+            </div>
+          </div>
+          <span id="batExtV" style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--text-muted);">--V</span>
+        </div>
+
+      </div>
+
+      <div id="batStatus" style="font-family:'Space Mono',monospace;font-size:0.6rem;color:var(--text-muted);text-align:center;">
+        not connected
+      </div>
+    </div>
+    <div class="fpane-resize"></div>
+  </div>
+
+<!-- Status bar -->
+<div class="status-bar" style="position:relative;z-index:200;">
+  <div class="status-dot idle" id="statusDot"></div>
+  <span id="statusText">Ready — drag blocks to build a program</span>
+</div>
+
+<!-- Panel chip bar -->
+<div class="pane-bar">
+  <span style="font-family:'Space Mono',monospace;font-size:.6rem;color:var(--text-muted);">PANELS:</span>
+  <button onclick="collapseAllPanes()" title="Minimise all panels"
+    style="padding:2px 10px;font-family:'Space Mono',monospace;font-size:0.65rem;
+           background:#30363d;color:#e6edf3;border:1px solid #484f58;border-radius:4px;
+           cursor:pointer;margin-right:4px;" id="collapseAllBtn">▼ Collapse All</button>
+  <button onclick="expandAllPanes()" title="Restore all panels"
+    style="padding:2px 10px;font-family:'Space Mono',monospace;font-size:0.65rem;
+           background:#30363d;color:#e6edf3;border:1px solid #484f58;border-radius:4px;
+           cursor:pointer;margin-right:6px;" id="expandAllBtn">▲ Expand All</button>
+  <button class="pane-chip on" id="chip-sim"     onclick="togglePane('pane-sim','chip-sim')">🤖 Simulator</button>
+  <button class="pane-chip on" id="chip-led"     onclick="togglePane('pane-led','chip-led')">💡 LEDs</button>
+  <button class="pane-chip on" id="chip-sensors" onclick="togglePane('pane-sensors','chip-sensors')">📡 Sensors</button>
+  <button class="pane-chip on" id="chip-code"    onclick="togglePane('pane-code','chip-code')">⚙ Code</button>
+  <button class="pane-chip on" id="chip-log"     onclick="togglePane('pane-log','chip-log')">📋 Log</button>
+  <button class="pane-chip on" id="chip-speaker" onclick="togglePane('pane-speaker','chip-speaker')">🔊 Speaker</button>
+  <button class="pane-chip on" id="chip-wheels"  onclick="togglePane('pane-wheels','chip-wheels')">🎮 Wheels</button>
+  <button class="pane-chip on" id="chip-ground"  onclick="togglePane('pane-ground','chip-ground')">🌱 Ground</button>
+  <button class="pane-chip on" id="chip-camera" onclick="togglePane('pane-camera','chip-camera')">📷 Camera</button>
+  <button class="pane-chip on" id="chip-tof"    onclick="togglePane('pane-tof','chip-tof')">📡 ToF</button>
+  <button class="pane-chip on" id="chip-rab"     onclick="togglePane('pane-rab','chip-rab')">📶 RaB</button>
+  <button class="pane-chip on" id="chip-battery" onclick="togglePane('pane-battery','chip-battery')">🔋 Battery</button>
+  <button class="pane-chip on" id="chip-imu"     onclick="togglePane('pane-imu','chip-imu')">🧭 IMU</button>
+  <button class="pane-chip on" id="chip-mic"     onclick="togglePane('pane-mic','chip-mic')">🎤 Mics</button>
+</div>
+
+<!-- Blockly XML toolbox -->
+<xml id="toolbox" style="display:none">
+  <category name="🚗  Move" colour="#2196F3">
+    <label text="— Timed moves —"></label>
+    <block type="epuck_move_forward">
+      <field name="DURATION">1</field>
+    </block>
+    <block type="epuck_move_backward">
+      <field name="DURATION">1</field>
+    </block>
+    <block type="epuck_turn_left">
+      <field name="ANGLE">90</field>
+    </block>
+    <block type="epuck_turn_right">
+      <field name="ANGLE">90</field>
+    </block>
+    <block type="epuck_stop"></block>
+    <label text="— Continuous speed —"></label>
+    <block type="epuck_set_speed">
+      <field name="SPEED">50</field>
+    </block>
+    <block type="epuck_set_motors_lr">
+      <field name="LEFT">50</field>
+      <field name="RIGHT">50</field>
+    </block>
+    <block type="epuck_set_motors_lr_val"></block>
+      <field name="LEFT">50</field>
+      <field name="RIGHT">50</field>
+    </block>
+    <block type="epuck_update_sensors"></block>
+  </category>
+  <category name="💡  LEDs" colour="#FF9800">
+    <block type="epuck_led_on">
+      <field name="LED_NUM">0</field>
+      <field name="COLOR">#00e5ff</field>
+    </block>
+    <block type="epuck_led_off">
+      <field name="LED_NUM">0</field>
+    </block>
+    <block type="epuck_led_all_on">
+      <field name="COLOR">#ff6b35</field>
+    </block>
+    <block type="epuck_led_all_off"></block>
+    <block type="epuck_led_blink">
+      <field name="TIMES">3</field>
+      <field name="COLOR">#7cfc00</field>
+    </block>
+  </category>
+  <category name="📡  Sensors" colour="#9C27B0">
+    <label text="— Proximity —"></label>
+    <block type="epuck_wait_obstacle"></block>
+    <block type="epuck_if_obstacle">
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_avoid_obstacle"></block>
+    <block type="epuck_log_sensors"></block>
+    <block type="epuck_braitenberg">
+      <field name="SENS">2</field>
+    </block>
+    <block type="epuck_if_proximity">
+      <field name="INDEX">0</field>
+      <field name="THRESHOLD">100</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_read_proximity">
+      <field name="INDEX">0</field>
+    </block>
+    <label text="— ToF Distance —"></label>
+    <block type="epuck_read_tof"></block>
+    <block type="epuck_if_tof_closer">
+      <field name="DIST_MM">200</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_wait_tof_closer">
+      <field name="DIST_MM">200</field>
+    </block>
+    <label text="— Ground —"></label>
+    <block type="epuck_read_ground">
+      <field name="SIDE">center</field>
+    </block>
+    <block type="epuck_if_ground_dark">
+      <field name="SIDE">center</field>
+      <field name="THRESHOLD">300</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_if_ground_light">
+      <field name="SIDE">center</field>
+      <field name="THRESHOLD">700</field>
+      <statement name="DO"></statement>
+    </block>
+  </category>
+  <category name="🔊  Sound" colour="#E91E63">
+    <block type="epuck_play_beep">
+      <field name="FREQ">440</field>
+      <field name="DUR">0.5</field>
+    </block>
+    <block type="epuck_play_melody"></block>
+  </category>
+  <category name="🔁  Control" colour="#4CAF50">
+    <block type="controls_repeat_ext">
+      <value name="TIMES">
+        <shadow type="math_number"><field name="NUM">5</field></shadow>
+      </value>
+    </block>
+    <block type="controls_forever"></block>
+    <block type="controls_wait">
+      <field name="SECONDS">1</field>
+    </block>
+  </category>
+  <category name="🔀  Logic" colour="#5C81A6">
+    <block type="controls_if"></block>
+    <block type="controls_if">
+      <mutation else="1"></mutation>
+    </block>
+    <block type="logic_compare">
+      <field name="OP">EQ</field>
+      <value name="A"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      <value name="B"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+    </block>
+    <block type="logic_operation">
+      <field name="OP">AND</field>
+    </block>
+    <block type="logic_negate"></block>
+    <block type="logic_boolean"><field name="BOOL">TRUE</field></block>
+  </category>
+  <category name="🔢  Math" colour="#5CA65C">
+    <block type="math_number"><field name="NUM">0</field></block>
+    <block type="math_arithmetic">
+      <field name="OP">ADD</field>
+      <value name="A"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      <value name="B"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+    </block>
+    <block type="math_single"><field name="OP">ABS</field></block>
+    <block type="math_round"><field name="OP">ROUND</field></block>
+    <block type="math_constrain">
+      <value name="LOW"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      <value name="HIGH"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+    </block>
+    <block type="math_random_int">
+      <value name="FROM"><shadow type="math_number"><field name="NUM">0</field></shadow></value>
+      <value name="TO"><shadow type="math_number"><field name="NUM">100</field></shadow></value>
+    </block>
+  </category>
+  <category name="📦  Variables" colour="#A55CA5" custom="VARIABLE">
+  </category>
+  <category name="🖨  Output" colour="#5CA68D">
+    <block type="epuck_print"></block>
+  </category>
+  <category name="🤖  Robot Info" colour="#26A69A">    <label text="— Motors —"></label>
+    <block type="epuck_get_motor_speed"><field name="SIDE">left</field></block>
+    <block type="epuck_is_moving"></block>
+    <label text="— Button &amp; Selector —"></label>
+    <block type="epuck_wait_button"></block>
+    <block type="epuck_is_button_pressed"></block>
+    <block type="epuck_if_selector">
+      <field name="VALUE">1</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_get_selector"></block>
+    <label text="— Microphones —"></label>
+    <block type="epuck_get_microphone"><field name="INDEX">0</field></block>
+    <label text="— Ambient Light —"></label>
+    <block type="epuck_get_ambient"><field name="INDEX">0</field></block>
+    <label text="— Identity —"></label>
+    <block type="epuck_get_robot_id"></block>
+  </category>
+  <category name="📷  Camera" colour="#F57C00">
+    <label text="— Control —"></label>
+    <block type="epuck_camera_open"><field name="DEVICE">1</field></block>
+    <block type="epuck_camera_close"></block>
+    <block type="epuck_camera_is_open"></block>
+    <label text="— Analysis —"></label>
+    <block type="epuck_camera_brightness"></block>
+    <block type="epuck_camera_dominant"></block>
+    <block type="epuck_camera_channel"><field name="CH">r</field></block>
+    <label text="— Conditionals —"></label>
+    <block type="epuck_if_camera_color">
+      <field name="COLOR">red</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_if_camera_brighter">
+      <field name="THRESHOLD">128</field>
+      <statement name="DO"></statement>
+    </block>
+    <block type="epuck_camera_region_brightness">
+      <field name="REGION">bright_left</field>
+    </block>
+    <block type="epuck_camera_ai_describe"></block>
+    <block type="epuck_camera_ai_ask">
+      <field name="PROMPT">What color is the main object?</field>
+    </block>
+    <block type="epuck_if_camera_sees">
+      <field name="KEYWORD">person</field>
+      <statement name="DO"></statement>
+    </block>
+  </category>
+  <category name="🏁  Race" colour="#FFD600">
+    <block type="epuck_race_monitor">
+      <field name="SPOT_NUM">1</field>
+      <field name="GS_THRESH">500</field>
+      <field name="PS_THRESH">800</field>
+    </block>
+  </category>
+  <category name="📶  Range &amp; Bearing" colour="#FF9800">
+    <block type="epuck_rab_set_mode">
+      <field name="MODE">rx</field>
+    </block>
+    <block type="epuck_rab_set_range">
+      <field name="RANGE">150</field>
+    </block>
+    <block type="epuck_rab_transmit">
+      <field name="HI">0xAA</field>
+      <field name="LO">0xFF</field>
+    </block>
+    <block type="epuck_rab_get_bearing"></block>
+    <block type="epuck_rab_get_range"></block>
+    <block type="epuck_rab_get_data"></block>
+    <block type="epuck_rab_get_sensor"></block>
+  </category>
+</xml>
+
+
+  <script src="blockly-config.js"></script>
+  <script>
+  var _PANES = [
+    ['pane-sim','chip-sim'],['pane-led','chip-led'],['pane-sensors','chip-sensors'],
+    ['pane-code','chip-code'],['pane-log','chip-log'],['pane-speaker','chip-speaker'],
+    ['pane-wheels','chip-wheels'],['pane-ground','chip-ground'],
+    ['pane-camera','chip-camera'],['pane-tof','chip-tof'],['pane-rab','chip-rab'],
+    ['pane-battery','chip-battery'],['pane-imu','chip-imu'],['pane-mic','chip-mic']
+  ];
+
+  function collapseAllPanes() {
+    _PANES.forEach(function(pair) {
+      var pane = document.getElementById(pair[0]);
+      if (pane && pane.style.display !== 'none') {
+        togglePane(pair[0], pair[1]);
+      }
+    });
+  }
+
+  function expandAllPanes() {
+    _PANES.forEach(function(pair) {
+      var pane = document.getElementById(pair[0]);
+      if (pane && pane.style.display === 'none') {
+        togglePane(pair[0], pair[1]);
+      }
+    });
+  }
+  </script>
+
+  <script>
+  // ── Range and Bearing pane logic ────────────────────────────────────────────
+  var _rabMode = null;
+
+  function _rabBase() {
+    var ip = (document.getElementById('robotIp') || {value:'192.168.0.111'}).value.trim();
+    return 'http://' + ip + ':5000';
+  }
+
+  function rabSetMode(mode) {
+    fetch(_rabBase() + '/randb/mode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode: mode})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        _rabMode = mode;
+        _rabUpdateUI(mode);
+      }
+    })
+    .catch(function(e){ console.warn('RaB mode error:', e); });
+  }
+
+  function _rabUpdateUI(mode) {
+    var offBtn = document.getElementById('rabBtnOff');
+    var rxBtn  = document.getElementById('rabBtnRx');
+    var txBtn  = document.getElementById('rabBtnTx');
+    var txSec  = document.getElementById('rabTxSection');
+    var rxSec  = document.getElementById('rabRxSection');
+    var offSec = document.getElementById('rabOffSection');
+    var rngSec = document.getElementById('rabRangeSection');
+    var src    = document.getElementById('rabSource');
+
+    // Reset button styles
+    [offBtn, rxBtn, txBtn].forEach(function(b) {
+      if (b) { b.style.background='#30363d'; b.style.border='1px solid #484f58'; b.style.color='#e6edf3'; }
+    });
+
+    if (mode === 'rx') {
+      if (rxBtn) { rxBtn.style.background='#1f6feb'; rxBtn.style.border='1px solid #388bfd'; rxBtn.style.color='#fff'; }
+      if (txSec) txSec.style.display = 'none';
+      if (rxSec) rxSec.style.display = 'block';
+      if (offSec) offSec.style.display = 'none';
+      if (rngSec) rngSec.style.display = 'block';
+      if (src) { src.textContent = 'RX'; src.style.background='#1f6feb'; src.classList.add('live'); }
+      _rabResetDisplay();
+    } else if (mode === 'tx') {
+      if (txBtn) { txBtn.style.background='#238636'; txBtn.style.border='1px solid #3fb950'; txBtn.style.color='#fff'; }
+      if (txSec) txSec.style.display = 'block';
+      if (rxSec) rxSec.style.display = 'none';
+      if (offSec) offSec.style.display = 'none';
+      if (rngSec) rngSec.style.display = 'block';
+      if (src) { src.textContent = 'TX'; src.style.background='#238636'; src.classList.add('live'); }
+    } else {
+      if (offBtn) { offBtn.style.background='#da3633'; offBtn.style.border='1px solid #f85149'; offBtn.style.color='#fff'; }
+      if (txSec) txSec.style.display = 'none';
+      if (rxSec) rxSec.style.display = 'none';
+      if (offSec) offSec.style.display = 'block';
+      if (rngSec) rngSec.style.display = 'none';
+      if (src) { src.textContent = 'OFF'; src.style.background=''; src.classList.remove('live'); }
+      // Clear stale timer when turning off
+      if (_rabStaleTimer) { clearTimeout(_rabStaleTimer); _rabStaleTimer = null; }
+    }
+  }
+
+  function rabUpdateRangeLabel(val) {
+    val = parseInt(val);
+    var el = document.getElementById('rabRangeLabel');
+    if (!el) return;
+    if (val === 0)        { el.textContent = '~1 m (full)'; }
+    else if (val >= 255)  { el.textContent = 'off (0 cm)'; }
+    else {
+      // Linear approximation: 0→100cm, 255→0cm
+      var cm = Math.round((1 - val / 255) * 100);
+      el.textContent = '~' + cm + ' cm';
+    }
+  }
+
+  function rabSetRange(val) {
+    fetch(_rabBase() + '/randb/range', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({range: parseInt(val)})
+    }).catch(function(e){ console.warn('RaB range error:', e); });
+  }
+
+  var _rabTxFormat = 'hex';  // 'hex' or 'dec'
+
+  function rabSetFormat(fmt) {
+    var hiEl = document.getElementById('rabTxHi');
+    var loEl = document.getElementById('rabTxLo');
+    var hint = document.getElementById('rabTxHint');
+    var hexBtn = document.getElementById('rabFmtHex');
+    var decBtn = document.getElementById('rabFmtDec');
+
+    // Parse current values before switching
+    var hi = _rabParseField(hiEl.value, _rabTxFormat);
+    var lo = _rabParseField(loEl.value, _rabTxFormat);
+
+    _rabTxFormat = fmt;
+
+    if (fmt === 'hex') {
+      hiEl.value = hi.toString(16).toUpperCase().padStart(2, '0');
+      loEl.value = lo.toString(16).toUpperCase().padStart(2, '0');
+      hiEl.style.textTransform = 'uppercase';
+      loEl.style.textTransform = 'uppercase';
+      hiEl.maxLength = 2;
+      loEl.maxLength = 2;
+      if (hint) hint.textContent = '0x00–0xFF per field';
+      hexBtn.style.background = '#1f6feb'; hexBtn.style.color = '#fff'; hexBtn.style.border = '1px solid #388bfd';
+      decBtn.style.background = '#30363d'; decBtn.style.color = '#8b949e'; decBtn.style.border = '1px solid #484f58';
+    } else {
+      hiEl.value = hi.toString();
+      loEl.value = lo.toString();
+      hiEl.style.textTransform = 'none';
+      loEl.style.textTransform = 'none';
+      hiEl.maxLength = 3;
+      loEl.maxLength = 3;
+      if (hint) hint.textContent = '0–255 per field';
+      decBtn.style.background = '#1f6feb'; decBtn.style.color = '#fff'; decBtn.style.border = '1px solid #388bfd';
+      hexBtn.style.background = '#30363d'; hexBtn.style.color = '#8b949e'; hexBtn.style.border = '1px solid #484f58';
+    }
+  }
+
+  function _rabParseField(val, fmt) {
+    val = (val || '0').trim();
+    var n = fmt === 'hex' ? parseInt(val, 16) : parseInt(val, 10);
+    return isNaN(n) ? 0 : Math.max(0, Math.min(255, n));
+  }
+
+  function rabSendTx() {
+    var hiStr = document.getElementById('rabTxHi').value || '0';
+    var loStr = document.getElementById('rabTxLo').value || '0';
+    var hi = _rabParseField(hiStr, _rabTxFormat);
+    var lo = _rabParseField(loStr, _rabTxFormat);
+    fetch(_rabBase() + '/randb/transmit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hi: hi, lo: lo})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var st = document.getElementById('rabTxStatus');
+      if (!st) return;
+      if (d.ok) {
+        var hexStr = '0x' + hi.toString(16).toUpperCase().padStart(2,'0') + ' 0x' + lo.toString(16).toUpperCase().padStart(2,'0');
+        var decStr = hi + ' / ' + lo;
+        st.style.color = '#3fb950';
+        st.textContent = 'Sent  HEX: ' + hexStr + '  DEC: ' + decStr;
+      } else {
+        st.style.color = '#f85149';
+        st.textContent = 'Error: ' + d.error;
+      }
+    })
+    .catch(function(e){ console.warn('RaB tx error:', e); });
+  }
+
+  var _rabLastUpdate = 0;
+  var _rabStaleTimer = null;
+
+  function _rabResetDisplay() {
+    var el;
+    el = document.getElementById('rabBearing'); if (el) el.textContent = '0.0°';
+    el = document.getElementById('rabRange');   if (el) el.textContent = '0';
+    el = document.getElementById('rabSensor');  if (el) el.textContent = '0';
+    el = document.getElementById('rabData');
+    if (el) el.innerHTML = '<span style="font-size:0.95rem;">0</span><br><span style="font-size:0.6rem;color:#8b949e;">0x00 0x00</span>';
+    // Reset compass needle to pointing up (no signal)
+    var canvas = document.getElementById('rabCompass');
+    if (canvas) {
+      var ctx = canvas.getContext('2d');
+      var cx = 40, cy = 40, r = 36;
+      ctx.clearRect(0, 0, 80, 80);
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2*Math.PI);
+      ctx.strokeStyle = '#30363d'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('N', cx, cy - r + 10);
+      // Grey dashed needle — no signal
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx, cy - r + 14);
+      ctx.strokeStyle = '#484f58'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.setLineDash([]);
+      // "NO SIGNAL" label
+      ctx.fillStyle = '#484f58'; ctx.font = '7px monospace'; ctx.textAlign = 'center';
+      ctx.fillText('NO SIGNAL', cx, cy + 6);
+    }
+  }
+
+  function updateRab(rab) {
+    if (!rab) return;
+    if (_rabMode !== 'rx') return;
+
+    var bearing = rab.bearing_deg;
+    var range   = rab.range_mm;
+    var data    = rab.data;
+    var sensor  = rab.sensor;
+
+    // Only update display if data is non-zero (actual reception)
+    var hasSignal = (range > 0 || data > 0);
+    if (hasSignal) {
+      _rabLastUpdate = Date.now();
+      // Clear any pending stale timer
+      if (_rabStaleTimer) { clearTimeout(_rabStaleTimer); _rabStaleTimer = null; }
+      // Schedule reset if no new data within 2s
+      _rabStaleTimer = setTimeout(function() {
+        if (_rabMode === 'rx') _rabResetDisplay();
+      }, 2000);
+    } else {
+      // Server sent zeros — already no signal, reset immediately
+      _rabResetDisplay();
+      return;
+    }
+
+    var el;
+    el = document.getElementById('rabBearing'); if (el) el.textContent = bearing.toFixed(1) + '°';
+    el = document.getElementById('rabRange');   if (el) el.textContent = range;
+    el = document.getElementById('rabSensor');  if (el) el.textContent = sensor;
+    el = document.getElementById('rabData');
+    if (el && data !== undefined) {
+      var hi = (data >> 8) & 0xFF;
+      var lo = data & 0xFF;
+      var hexStr = '0x' + hi.toString(16).toUpperCase().padStart(2,'0') + hi.toString(16).toUpperCase().padStart(2,'0');
+      el.innerHTML =
+        '<span style="font-size:0.95rem;">' + data + '</span>' +
+        '<br><span style="font-size:0.6rem;color:#8b949e;">0x' +
+        hi.toString(16).toUpperCase().padStart(2,'0') +
+        ' 0x' +
+        lo.toString(16).toUpperCase().padStart(2,'0') +
+        '</span>';
+    }
+
+    // Draw compass needle
+    var canvas = document.getElementById('rabCompass');
+    if (canvas) {
+      var ctx = canvas.getContext('2d');
+      var cx = 40, cy = 40, r = 36;
+      ctx.clearRect(0, 0, 80, 80);
+
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // N marker
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('N', cx, cy - r + 10);
+
+      // Needle
+      var rad = (bearing - 90) * Math.PI / 180;
+      var nx = cx + (r - 8) * Math.cos(rad);
+      var ny = cy + (r - 8) * Math.sin(rad);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(nx, ny);
+      ctx.strokeStyle = '#388bfd';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Centre dot
+      ctx.beginPath();
+      ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+      ctx.fillStyle = '#388bfd';
+      ctx.fill();
+    }
+  }
+
+  // Wire into WebSocket handler — patch updateRab into existing ws message handler
+  // (blockly-config.js calls updateRab(msg.randb) if defined)
+
+  // ── Pi-puck extension LED controls (FT903) ────────────────────────────────
+  function setPiLed(index) {
+    if (!wsConnected) return;
+    var colors = [
+      parseInt(document.getElementById('piLed0').value),
+      parseInt(document.getElementById('piLed1').value),
+      parseInt(document.getElementById('piLed2').value),
+    ];
+    fetch(getRobotBase() + '/leds', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pi_leds: colors})
+    }).catch(function(e){ console.warn('Pi LED error:', e); });
+  }
+  </script>
+<!-- ═══════════════════════════════════════════════════════════ HELP MODAL -->
+<div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;overflow-y:auto;font-family:'Space Mono',monospace;">
+  <div style="max-width:820px;margin:40px auto 60px;background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,0.6);">
+
+    <!-- Header -->
+    <div style="background:var(--panel2);border-bottom:1px solid var(--border);padding:20px 28px;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-size:1.1rem;font-weight:bold;color:var(--text);letter-spacing:0.04em;">📖 e-puck2 Block Coder — Help</div>
+        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:3px;letter-spacing:0.08em;">University of Namur · Robotics Lab</div>
+      </div>
+      <button onclick="hideHelp()" style="background:none;border:1px solid var(--border);color:var(--text-muted);font-family:'Space Mono',monospace;font-size:0.75rem;padding:6px 14px;border-radius:6px;cursor:pointer;">✕ Close</button>
+    </div>
+
+    <!-- Tab bar -->
+    <div id="helpTabBar" style="display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--panel2);">
+    </div>
+
+    <!-- Tab content -->
+    <div id="helpTabContent" style="padding:28px;color:var(--text);font-size:0.72rem;line-height:1.8;"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ── Help content ─────────────────────────────────────────────────────────
+  const TABS = [
+    { id:'overview',  label:'🚀 Overview' },
+    { id:'interface', label:'🖥 Interface' },
+    { id:'panes',     label:'📦 Panes' },
+    { id:'blocks',    label:'🧩 Blocks' },
+    { id:'examples',  label:'📂 Examples' },
+    { id:'connect',   label:'🤖 Robot' },
+    { id:'tips',      label:'💡 Tips' },
+  ];
+
+  const CONTENT = {
+    overview: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">What is this?</h2>
+      <p>The <strong>e-puck2 Block Coder</strong> is a visual programming environment for the e-puck2 robot. You build programs by snapping together colourful blocks — no typing required. The tool runs in your browser and can control a real robot over Wi-Fi.</p>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Workflow in 4 steps</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        ${step(1,'Build','Drag blocks from the left toolbox onto the canvas and snap them together.')}
+        ${step(2,'Test','Click ▶ Run Program to simulate the logic in the browser — no robot needed.')}
+        ${step(3,'Connect','Enter the robot IP address and click Connect.')}
+        ${step(4,'Deploy','Click 🚀 Send to Robot. The program runs on the real hardware.')}
+      </div>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Quick keyboard shortcuts</h2>
+      ${table([['Delete / Backspace','Delete selected block'],['Ctrl + Z','Undo'],['Ctrl + Y','Redo'],['Ctrl + drag','Pan the canvas'],['Scroll wheel','Zoom in / out']])}
+    `,
+
+    interface: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Header bar</h2>
+      ${table([
+        ['✕ Clear','Remove all blocks from the canvas'],
+        ['📂 Examples','Open the example picker — choose a ready-made program to load'],
+        ['⭐ Save as Example','Save your current program as a named entry in the Examples list (stored in browser)'],
+        ['💾 Save','Download the current workspace as an XML file to your computer'],
+        ['📂 Load','Upload a previously saved XML file back onto the canvas'],
+        ['❓ Help','Open this documentation'],
+      ])}
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Connection bar</h2>
+      ${table([
+        ['Robot selector','Choose your robot from the dropdown (Robot 1–5)'],
+        ['Connect button','Connect to the robot over WebSocket. Turns green when live.'],
+        ['▶ Run','Simulate the program in the browser (no robot needed)'],
+        ['🚀 Send to Robot','Upload and run the current program on the connected robot'],
+        ['⛔ Stop Robot','Immediately stop any running program and cut motor power'],
+      ])}
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Chip bar (bottom strip)</h2>
+      <p>Each chip (e.g. <code>🤖 Simulator</code>, <code>📡 Sensors</code>) toggles the corresponding floating pane on or off. Chips glow when their pane is visible. Click again to hide.</p>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Pane controls</h2>
+      ${table([
+        ['🔴 Red dot','Close the pane (use the chip to reopen it)'],
+        ['🟡 Yellow dot','Collapse / expand the pane body'],
+        ['Drag header','Move the pane anywhere on screen'],
+        ['▦ Bottom-right corner','Resize the pane'],
+      ])}
+    `,
+
+    panes: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Floating panes reference</h2>
+      ${pane('🤖 Simulator','Shows an animated top-down view of the e-puck2. Proximity sensor bars glow when obstacles are near. Updates live from the real robot when connected, or from the simulator when running offline.')}
+      ${pane('📡 Sensors','Raw values for all 8 proximity sensors (ps0–ps7), updated in real time. The SIM/LIVE badge shows whether data is coming from the robot or the browser simulator.')}
+      ${pane('💡 LEDs','Manual LED control panel. Toggle individual LEDs or use All On / All Off. Useful for testing LED blocks without running a full program.')}
+      ${pane('⚙ Generated Python','Shows the Python code that your blocks produce. Click Copy to copy it to the clipboard. Useful for understanding what the blocks actually do — and for spotting logic errors.')}
+      ${pane('📋 Log','Live program output and system messages. Shows robot connection status, script start/stop events, and anything your program prints. Use the 📋 log all proximity values block to send sensor readings here.')}
+      ${pane('🎮 Wheels','Manual wheel speed sliders. Drag left/right independently to test movement without writing a program. Resets to zero when you release.')}
+      ${pane('🌱 Ground Sensor','Live readings from the three ground sensors (left, center, right). Values are 0–1023; higher = lighter surface. Shows SIM or LIVE source badge.')}
+      ${pane('📏 ToF Distance','Live reading from the VL53L0X time-of-flight sensor in millimetres. Range ~40–1300 mm. Shows −1 when nothing is in range.')}
+      ${pane('📷 Camera','Live camera feed from the front-facing camera. Use Open/Close to start or stop streaming. Snapshot captures a single frame.')}
+      ${pane('📶 Range & Bearing','Controls the RaB board for inter-robot communication. Set transmission mode, power, and read bearing + distance to nearby robots.')}
+      ${pane('🧭 IMU','3D tilt visualisation from the MPU-9250 accelerometer/gyroscope. Shows roll, pitch, yaw rate, and g-force. Use ⊙ CAL to calibrate on a flat surface.')}
+      ${pane('🎤 Microphones','Live audio levels from all 4 microphones (front, left, back, right). The direction arrow points toward the loudest sound source. Detects claps.')}
+      ${pane('🔊 Speaker','Two sections: (1) play audio files (MP3/WAV) uploaded to the robot; (2) trigger the built-in e-puck2 buzzer tones.')}
+      ${pane('🔋 Battery','Battery level for both the e-puck2 main battery and the Pi-Puck extension battery. Colour changes green→yellow→red as charge drops.')}
+    `,
+
+    blocks: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Block categories</h2>
+
+      ${cat('🟦 Move (blue)','Controls motors and movement.',
+        [['move forward / backward ⏱ N sec','Drive straight for a fixed time'],
+         ['turn left / right 🔄 N°','Rotate by degrees in place'],
+         ['set speed to N%','Set both wheels to the same speed'],
+         ['🚗 set motors left N% right N%','Set each wheel independently (use numbers)'],
+         ['🚗 set motors left [ ] right [ ]','Same but accepts variables or expressions in the sockets'],
+         ['🧠 Braitenberg avoid sensitivity N','Smooth reactive obstacle avoidance using weighted sensor values'],
+        ])}
+
+      ${cat('🟨 Sense (yellow)','Read sensor values.',
+        [['📡 read proximity sensor N','Returns raw value 0–65535 for sensor N (0=front-right, 7=front-left)'],
+         ['🔲 read ground sensor Left/Center/Right','Returns 0–1023; low=dark, high=light'],
+         ['📏 ToF distance (mm)','Returns distance in mm, or −1 if nothing detected'],
+         ['🔄 update sensors','Must be called at the top of each loop iteration to refresh all sensor readings'],
+         ['📋 log all proximity values','Prints all 8 PS sensor raw values to the Log pane — useful for calibration'],
+        ])}
+
+      ${cat('🟪 Sense — conditional (purple)','Shortcut if-blocks for common sensor checks.',
+        [['🚧 if obstacle ahead … do','Triggers when any front sensor exceeds THRESHOLD'],
+         ['🔲 if ground N is dark (< T) … do','Triggers when the chosen ground sensor is below threshold T'],
+         ['🔲 if ground N is light (> T) … do','Triggers when the chosen ground sensor is above threshold T'],
+         ['📏 if distance < N mm … do','Triggers when ToF reads closer than N mm'],
+         ['⏳ wait until distance < N mm','Pauses the program until something comes within range'],
+        ])}
+
+      ${cat('🟥 Act (red/orange)','Outputs and effects.',
+        [['turn on / off LED N','Control a specific LED (0–7)'],
+         ['all LEDs ON / OFF','Set all LEDs at once'],
+         ['blink LEDs N times','Flash all LEDs'],
+         ['🔔 play beep N sec','Trigger the buzzer for N seconds'],
+        ])}
+
+      ${cat('⬜ Logic / Math / Variables (standard Blockly)','Standard programming blocks.',
+        [['if … do … else','Conditional branching'],
+         ['forever','Loop that runs indefinitely (main robot loop)'],
+         ['repeat N times','Fixed count loop'],
+         ['set variable to …','Assign a value to a variable — useful for constants at the top of your program'],
+         ['Math arithmetic','Add, subtract, multiply, divide — can be nested inside motor speed sockets'],
+        ])}
+    `,
+
+    examples: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Built-in examples</h2>
+      <p>Click <strong>📂 Examples</strong> in the header to open the picker. Built-in examples load instantly; your saved examples show a 🗑 delete button.</p>
+
+      ${ex('Square patrol + blink','Moves in a square and blinks LEDs at each corner. Good first program — introduces move, turn, and LED blocks.')}
+      ${ex('Obstacle avoidance (Braitenberg)','Uses the 🧠 Braitenberg block for smooth reactive avoidance. Single block, easy to run. Change the sensitivity (1–3) to tune how aggressively the robot reacts.')}
+      ${ex('Obstacle avoidance (reactive)','Explicit if/else version using raw sensor thresholds. Students can tune THRESHOLD and turn speeds to understand the trade-offs.')}
+      ${ex('Wall following (right side)','Keeps a wall on the robot\'s right using ps[0] (front-right) and ps[2] (rear-right). Four named constants at the top make tuning easy.')}
+      ${ex('Line following','Follows a black line on a white floor using the left and right ground sensors. Tune THRESHOLD to match your floor, and SPEED_SLOW to adjust turn sharpness.')}
+      ${ex('Area confinement','Robot wanders freely but backs away from a black boundary line. Combine with obstacle avoidance for interesting emergent behaviour inside an arena.')}
+      ${ex('Distance keeper (ToF)','Maintains a fixed distance from an object in front using the ToF sensor. Introduces the concept of a feedback/control loop.')}
+      ${ex('Speed controller (ToF — proportional)','Robot slows down smoothly as it approaches an obstacle. Uses a proportional formula: speed = SPEED_SLOW + (dist − STOP) / (FULL − STOP) × (SPEED_FULL − SPEED_SLOW). A gentle introduction to P-control.')}
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Saving your own examples</h2>
+      <p>Build any program, then click <strong>⭐ Save as Example</strong>. Type a name and it will appear at the bottom of the Examples list — marked with a ⭐. Examples are saved in your browser and persist across page reloads. To delete one, open Examples and click the 🗑 button next to it.</p>
+      <p style="color:var(--text-muted);font-size:0.68rem;">Note: saved examples are stored in this browser only. Use 💾 Save to export an XML file if you want to share a program with someone else.</p>
+    `,
+
+    connect: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Connecting to the robot</h2>
+      <ol style="padding-left:18px;line-height:2.2;">
+        <li>Power on the e-puck2 + Pi-Puck and wait ~20 seconds for boot.</li>
+        <li>Connect your computer to the lab Wi-Fi network.</li>
+        <li>Select your robot from the <strong>Robot</strong> dropdown (Robot1-111 to Robot7-124).</li>
+        <li>Click <strong>Connect</strong>. The button turns green when the WebSocket is live.</li>
+        <li>All sensor panes switch from <code>SIM</code> to <code>LIVE</code> automatically.</li>
+      </ol>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Running a program</h2>
+      <ol style="padding-left:18px;line-height:2.2;">
+        <li>Build your program in the block canvas.</li>
+        <li>Click <strong>🚀 Send to Robot</strong> — the program uploads and starts immediately.</li>
+        <li>Watch the Log pane for output and errors.</li>
+        <li>Click <strong>⛔ Stop Robot</strong> at any time to halt the program and cut motor power.</li>
+      </ol>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Sensor layout (top view)</h2>
+      <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:0.68rem;line-height:2;text-align:center;">
+        <div style="color:var(--text-muted);margin-bottom:8px;">Proximity sensors — higher value = closer obstacle</div>
+        <pre style="margin:0;color:var(--text);font-size:0.7rem;">
+         ps7  ps0
+       ps6      ps1
+       ps5      ps2
+         ps4  ps3
+         ↑ front ↑</pre>
+        <div style="margin-top:10px;color:var(--text-muted);">Ground sensors: Left · Center · Right (under the chassis, face down)</div>
+        <div style="margin-top:4px;color:var(--text-muted);">ToF sensor: front-facing, range 40–1300 mm</div>
+      </div>
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Troubleshooting</h2>
+      ${table([
+        ['"Unreachable"','Check robot is on, IP is correct, and you are on the same network'],
+        ['Program starts then stops','Check the Log pane for a Python error — usually a missing sensor or typo'],
+        ['Robot not moving','Confirm motors are not set to 0% — check the Generated Python pane'],
+        ['Sensors show SIM after connect','Try disconnecting and reconnecting — the WebSocket may have timed out'],
+        ['Connect button stays grey','Refresh the page and try again'],
+      ])}
+    `,
+
+    tips: `
+      <h2 style="margin:0 0 14px;font-size:0.9rem;color:var(--accent);">Tips for students</h2>
+
+      ${tip('Always put update sensors at the top of your forever loop','Without it, sensor blocks return the same stale value every iteration — your robot won\'t react to anything.')}
+      ${tip('Use named variables for constants','Set THRESHOLD, SPEED_FAST, SPEED_SLOW at the top of your program. Then you only need to change one block to tune the whole behaviour — not hunt through every if-block.')}
+      ${tip('Start slow','Set speeds to 20–30% while testing. You can always increase later. Crashes at full speed are harder to debug.')}
+      ${tip('Use the Log pane','Add a 📋 log all proximity values block inside your loop when something isn\'t working. Seeing real numbers is much faster than guessing.')}
+      ${tip('Check Generated Python','The ⚙ Code pane shows exactly what your blocks produce. If the logic looks wrong there, it will be wrong on the robot too.')}
+      ${tip('Test offline first','Run with ▶ Run Program before connecting to the robot. The browser simulator catches structural errors before you deploy.')}
+      ${tip('Save your work often','Use 💾 Save to download your workspace as an XML file. Use ⭐ Save as Example for programs you want to return to quickly.')}
+
+      <h2 style="margin:22px 0 12px;font-size:0.9rem;color:var(--accent);">Sensor calibration</h2>
+      <p>Sensor values depend on your environment (lighting, floor colour, surface reflectivity). Before tuning thresholds:</p>
+      <ol style="padding-left:18px;line-height:2.2;">
+        <li>Load the <em>Obstacle avoidance (reactive)</em> example as a starting point.</li>
+        <li>Replace the forever body with: <code>update sensors → log all proximity values</code></li>
+        <li>Run on the robot and observe readings in the Log pane.</li>
+        <li>Record idle values (open space) and near-wall values (5–10 cm away).</li>
+        <li>Set your THRESHOLD halfway between the two.</li>
+      </ol>
+      <p>For ground sensors, the same process applies — read values on white floor and on your black line, then pick a threshold in between.</p>
+    `,
+  };
+
+  // ── Helper renderers ──────────────────────────────────────────────────────
+  function step(n, title, desc) {
+    return '<div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:14px;">'
+      + '<div style="font-size:1.4rem;font-weight:bold;color:var(--accent);margin-bottom:4px;">' + n + '</div>'
+      + '<div style="font-weight:bold;color:var(--text);margin-bottom:4px;">' + title + '</div>'
+      + '<div style="color:var(--text-muted);">' + desc + '</div></div>';
+  }
+  function table(rows) {
+    return '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;">'
+      + rows.map(([a,b]) =>
+          '<tr style="border-bottom:1px solid var(--border);">'
+          + '<td style="padding:7px 10px 7px 0;color:var(--accent3);white-space:nowrap;width:200px;"><code>' + a + '</code></td>'
+          + '<td style="padding:7px 0 7px 10px;color:var(--text-muted);">' + b + '</td></tr>'
+        ).join('') + '</table>';
+  }
+  function pane(title, desc) {
+    return '<div style="margin-bottom:12px;padding:12px;background:var(--panel2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;">'
+      + '<div style="font-weight:bold;color:var(--text);margin-bottom:4px;">' + title + '</div>'
+      + '<div style="color:var(--text-muted);">' + desc + '</div></div>';
+  }
+  function cat(title, desc, rows) {
+    return '<div style="margin-bottom:18px;">'
+      + '<div style="font-weight:bold;color:var(--text);margin-bottom:6px;">' + title + '</div>'
+      + '<div style="color:var(--text-muted);margin-bottom:8px;">' + desc + '</div>'
+      + table(rows) + '</div>';
+  }
+  function ex(title, desc) {
+    return '<div style="margin-bottom:10px;padding:10px 12px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;">'
+      + '<div style="color:var(--text);font-weight:bold;margin-bottom:3px;">' + title + '</div>'
+      + '<div style="color:var(--text-muted);">' + desc + '</div></div>';
+  }
+  function tip(title, desc) {
+    return '<div style="margin-bottom:12px;padding:12px;background:var(--panel2);border-left:3px solid #d4a017;border-radius:0 8px 8px 0;">'
+      + '<div style="color:#d4a017;font-weight:bold;margin-bottom:4px;">💡 ' + title + '</div>'
+      + '<div style="color:var(--text-muted);">' + desc + '</div></div>';
+  }
+
+  // ── Tab logic ─────────────────────────────────────────────────────────────
+  let activeTab = 'overview';
+
+  function renderTabs() {
+    const bar = document.getElementById('helpTabBar');
+    bar.innerHTML = '';
+    TABS.forEach(t => {
+      const btn = document.createElement('button');
+      btn.textContent = t.label;
+      const active = t.id === activeTab;
+      btn.style.cssText = 'flex:1;padding:10px 4px;background:' + (active ? 'var(--panel)' : 'none')
+        + ';border:none;border-bottom:2px solid ' + (active ? 'var(--accent)' : 'transparent')
+        + ';color:' + (active ? 'var(--text)' : 'var(--text-muted)')
+        + ';font-family:"Space Mono",monospace;font-size:0.62rem;cursor:pointer;transition:color 0.15s;white-space:nowrap;';
+      btn.onclick = () => { activeTab = t.id; renderTabs(); renderContent(); };
+      bar.appendChild(btn);
+    });
+  }
+
+  function renderContent() {
+    document.getElementById('helpTabContent').innerHTML = CONTENT[activeTab] || '';
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+  window.showHelp = function(tab) {
+    if (tab) activeTab = tab;
+    const modal = document.getElementById('helpModal');
+    modal.style.display = 'block';
+    renderTabs();
+    renderContent();
+    // Close on backdrop click
+    modal.onclick = function(e) { if (e.target === modal) hideHelp(); };
+  };
+
+  window.hideHelp = function() {
+    document.getElementById('helpModal').style.display = 'none';
+  };
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideHelp();
+    if (e.key === 'F1') { e.preventDefault(); showHelp(); }
+  });
+})();
+</script>
+</body>
+</html>

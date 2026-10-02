@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>e-puck2 Robot QR Labels</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Saira+Condensed:wght@700;800&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #f0f0f0;
+    font-family: 'Space Mono', monospace;
+    padding: 20px;
+  }
+
+  h1 {
+    text-align: center;
+    font-family: 'Saira Condensed', sans-serif;
+    font-size: 1.4rem;
+    color: #333;
+    margin-bottom: 24px;
+    letter-spacing: 0.06em;
+  }
+
+  .grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    border: 2px solid #ddd;
+    padding: 18px 16px 14px;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .robot-badge {
+    width: 100%;
+    background: #1a1f3c;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .robot-num {
+    font-family: 'Saira Condensed', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .robot-info { display: flex; flex-direction: column; }
+
+  .robot-label {
+    font-size: 0.58rem;
+    color: #a3acc9;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .robot-ip {
+    font-size: 0.72rem;
+    color: #60a5fa;
+    font-weight: 700;
+  }
+
+  /* Two QR codes side by side: 1 = WiFi, 2 = control page */
+  .qr-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .qr-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .step-tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #4a5280;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .step-dot {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #1a1f3c;
+    color: #fff;
+    font-size: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .qr-wrap {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px;
+  }
+
+  .qr-wrap.wifi { border-style: dashed; border-color: #9ca3af; }
+
+  .footer-note {
+    font-size: 0.55rem;
+    color: #6b7280;
+    text-align: center;
+    letter-spacing: 0.04em;
+    line-height: 1.5;
+  }
+
+  /* Router card */
+  .router .robot-badge { background: #111827; }
+  .router .robot-num   { font-size: 1.5rem; }
+  .router .robot-ip    { color: #e5e7eb; }
+
+  .wifi-creds {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cred-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f8f9ff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 5px 9px;
+  }
+
+  .cred-name {
+    font-size: 0.58rem;
+    color: #6b7280;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .cred-value {
+    font-size: 0.78rem;
+    color: #1a1f3c;
+    font-weight: 700;
+  }
+
+  /* Colour accents per robot */
+  .r1 .robot-badge { background: #1e3a5f; } .r1 .robot-ip { color: #60a5fa; } .r1 .qr-wrap.ctrl { border-color: #60a5fa; } .r1 .step-dot { background: #1e3a5f; }
+  .r2 .robot-badge { background: #1a3a1a; } .r2 .robot-ip { color: #4ade80; } .r2 .qr-wrap.ctrl { border-color: #4ade80; } .r2 .step-dot { background: #1a3a1a; }
+  .r3 .robot-badge { background: #3a1a1a; } .r3 .robot-ip { color: #f87171; } .r3 .qr-wrap.ctrl { border-color: #f87171; } .r3 .step-dot { background: #3a1a1a; }
+  .r4 .robot-badge { background: #2a1a3a; } .r4 .robot-ip { color: #c084fc; } .r4 .qr-wrap.ctrl { border-color: #c084fc; } .r4 .step-dot { background: #2a1a3a; }
+  .r5 .robot-badge { background: #2a2a1a; } .r5 .robot-ip { color: #fbbf24; } .r5 .qr-wrap.ctrl { border-color: #fbbf24; } .r5 .step-dot { background: #2a2a1a; }
+  .r6 .robot-badge { background: #123438; } .r6 .robot-ip { color: #22d3ee; } .r6 .qr-wrap.ctrl { border-color: #22d3ee; } .r6 .step-dot { background: #123438; }
+
+  .print-btn {
+    display: block;
+    margin: 0 auto 20px;
+    padding: 10px 28px;
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .print-btn:hover { opacity: 0.9; }
+
+  @media print {
+    body { background: #fff; padding: 10px; }
+    h1 { margin-bottom: 16px; }
+    .grid { gap: 14px; }
+    .card { box-shadow: none; border: 1.5px solid #ccc; }
+    .print-btn { display: none; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🤖 UNamur Robotics Lab — e-puck2 Robot Labels</h1>
+<button class="print-btn" onclick="window.print()">🖨 Print Labels</button>
+
+<div class="grid" id="grid"></div>
+
+<script>
+// ── Router WiFi settings: fill these in before printing ──
+const WIFI = {
+  ssid:     'RoboticsLab',
+  password: 'EpuckRobot',
+  security: 'WPA',   // 'WPA' (also covers WPA2/WPA3), 'WEP', or 'nopass' for an open network
+  hidden:   false,   // true if the router does not broadcast its name
+};
+
+const robots = [
+  { num: 1, ip: '192.168.0.111', color: 'r1' },
+  { num: 2, ip: '192.168.0.113', color: 'r2' },
+  { num: 3, ip: '192.168.0.114', color: 'r3' },
+  { num: 4, ip: '192.168.0.115', color: 'r4' },
+  { num: 5, ip: '192.168.0.121', color: 'r5' },
+  { num: 6, ip: '192.168.0.118', color: 'r6' },
+];
+
+// Special characters in WiFi QR fields must be backslash-escaped
+function escWifi(s) { return String(s).replace(/([\\;,:"])/g, '\\$1'); }
+
+function wifiPayload(w) {
+  let p = `WIFI:T:${w.security};S:${escWifi(w.ssid)};`;
+  if (w.security !== 'nopass') p += `P:${escWifi(w.password)};`;
+  if (w.hidden) p += 'H:true;';
+  return p + ';';
+}
+
+function makeQR(el, text, size) {
+  new QRCode(el, {
+    text,
+    width: size,
+    height: size,
+    colorDark: '#1a1f3c',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M,
+  });
+}
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+const grid = document.getElementById('grid');
+const wifiText = wifiPayload(WIFI);
+
+// ── Router card (stick on the router or the demo table) ──
+const routerCard = document.createElement('div');
+routerCard.className = 'card router';
+routerCard.innerHTML = `
+  <div class="robot-badge">
+    <div class="robot-num">📡</div>
+    <div class="robot-info">
+      <div class="robot-label">Robot WiFi network</div>
+      <div class="robot-ip">Scan to connect</div>
+    </div>
+  </div>
+  <div class="qr-wrap wifi" id="qr-router"></div>
+  <div class="wifi-creds">
+    <div class="cred-row"><span class="cred-name">Network</span><span class="cred-value">${escHtml(WIFI.ssid)}</span></div>
+    ${WIFI.security !== 'nopass'
+      ? `<div class="cred-row"><span class="cred-name">Password</span><span class="cred-value">${escHtml(WIFI.password)}</span></div>`
+      : ''}
+  </div>
+  <div class="footer-note">This network has no internet.<br>Stay connected if your phone asks, and turn off mobile data.</div>
+`;
+grid.appendChild(routerCard);
+makeQR(document.getElementById('qr-router'), wifiText, 170);
+
+// ── One card per robot: 1 = join WiFi, 2 = open control page ──
+robots.forEach(r => {
+  const mainUrl = `http://${r.ip}:5000/mobile.html`;
+
+  const card = document.createElement('div');
+  card.className = `card ${r.color}`;
+  card.innerHTML = `
+    <div class="robot-badge">
+      <div class="robot-num">#${r.num}</div>
+      <div class="robot-info">
+        <div class="robot-label">e-puck2 Robot</div>
+        <div class="robot-ip">${r.ip}</div>
+      </div>
+    </div>
+    <div class="qr-row">
+      <div class="qr-step">
+        <div class="step-tag"><span class="step-dot">1</span>Join WiFi</div>
+        <div class="qr-wrap wifi" id="qr-wifi-${r.num}"></div>
+      </div>
+      <div class="qr-step">
+        <div class="step-tag"><span class="step-dot">2</span>Control</div>
+        <div class="qr-wrap ctrl" id="qr-${r.num}"></div>
+      </div>
+    </div>
+    <div class="footer-note">Network: <strong>${escHtml(WIFI.ssid)}</strong></div>
+  `;
+  grid.appendChild(card);
+
+  makeQR(document.getElementById(`qr-wifi-${r.num}`), wifiText, 118);
+  makeQR(document.getElementById(`qr-${r.num}`), mainUrl, 118);
+});
+</script>
+</body>
+</html>
