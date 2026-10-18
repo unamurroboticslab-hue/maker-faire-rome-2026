@@ -12,14 +12,14 @@ This repository holds everything needed to run the stand: the robot software, th
 | Item | Notes |
 |---|---|
 | WiFi router | Pre-configured. Network **RoboticsLab**. Has no internet — that's expected. |
-| 6 × e-puck2 robots | Software already installed in `/home/pi/blocky` on each robot. |
+| 10 × e-puck2 robots | Robots 1–6, 12, 16, 24 and 25. Software already installed in `/home/pi/blocky` on each robot. |
 | Operator laptop | Used to start the server on each robot over SSH. |
 
 ## Quick start (operator)
 
 1. **Power on the router** and wait ~30 s. Connect your laptop to the **RoboticsLab** WiFi.
 2. **Turn on a robot** and wait 30–40 s for it to boot and join the network.
-3. **Connect to it** from a terminal: `ssh pi@<robot IP>` (IPs in [`network/robots.md`](network/robots.md); the password is in the printed operator manual).
+3. **Connect to it** from a terminal: `ssh pi@<robot IP>` (IPs in [`network/robots.md`](network/robots.md); password `11110000`, the same on every robot).
 4. **Start the server:**
    ```bash
    cd /home/pi/blocky
@@ -45,8 +45,10 @@ Problems? See [`troubleshooting.md`](troubleshooting.md).
 ├── network/
 │   └── robots.md          ← robot numbers, IP addresses, URLs
 ├── docs/
+│   ├── operator-manual.pdf ← 6-page operator manual (setup, fair day, shutdown, troubleshooting)
 │   ├── poster-A0.pdf      ← stand poster (print at A0)
-│   └── robot-labels.html  ← printable QR labels for each robot and the router
+│   ├── robot-labels.html  ← printable QR labels for robots 1–6 and the router
+│   └── QR_NewRobots.pdf   ← printable QR codes for robots 12, 16, 24 and 25
 └── robot/
     └── blocky/            ← software running on each robot (copy of /home/pi/blocky)
 ```
@@ -57,8 +59,20 @@ Each robot serves these pages on port 5000 (`http://<robot IP>:5000/...`):
 
 | Page | File |
 |---|---|
-| Remote control (phone) | `mobile.html` |
+| Remote control for visitors (phone) | `mobile.html` |
 | Block Coder (visual programming) | `index.html` |
+
+`mobile.html` is a simple version made for children: robot face, proximity radar, arrows, speed slider (20–70%) and STOP. It connects by itself to the robot whose QR code was scanned, and stops the robot when a finger leaves an arrow or the phone is locked. The original page, with demo programs, LEDs and all sensors, is kept in the repo as `robot/blocky/mobile-full.html` (it isn't served by the robots).
+
+### Updating the remote-control page on the robots
+
+The server reads `mobile.html` fresh on every request, so no restart is needed. From the repo folder, on a laptop connected to **RoboticsLab**:
+
+```bash
+for ip in 111 113 114 115 121 118 112 116 124 125; do
+  scp robot/blocky/mobile.html pi@192.168.0.$ip:/home/pi/blocky/
+done
+```
 
 ## Restoring the software on a robot
 

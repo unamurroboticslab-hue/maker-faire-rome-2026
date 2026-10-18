@@ -1,0 +1,2247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<title>e-puck2 Remote</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;600;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0c0f;
+    --panel:    #111418;
+    --panel2:   #181c22;
+    --border:   #252a32;
+    --text:     #e2e8f0;
+    --muted:    #4a5568;
+    --accent:   #00d4ff;
+    --green:    #00e87a;
+    --red:      #ff3b5c;
+    --yellow:   #ffd600;
+    --orange:   #ff7c3a;
+    --mono:     'Share Tech Mono', monospace;
+    --display:  'Barlow Condensed', sans-serif;
+  }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 1.3rem;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .logo span { color: var(--muted); font-weight: 300; }
+  .header-status {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.connecting { background: var(--yellow); animation: pulse 0.8s infinite; }
+  .status-dot.error { background: var(--red); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Connect section ── */
+  .connect-section {
+    padding: 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .ip-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .ip-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .ip-input {
+    flex: 1;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 1rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+    outline: none;
+    min-width: 0;
+  }
+  .ip-input:focus { border-color: var(--accent); }
+
+  .connect-btn {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    letter-spacing: 0.06em;
+  }
+  .connect-btn:active { transform: scale(0.96); }
+  .connect-btn.connected {
+    background: rgba(0,232,122,0.12);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .connect-btn.connecting {
+    background: rgba(255,214,0,0.1);
+    border-color: var(--yellow);
+    color: var(--yellow);
+  }
+  .connect-btn.error {
+    background: rgba(255,59,92,0.1);
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  /* ── Main content ── */
+  .main { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* ── Action buttons ── */
+  .action-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .action-btn {
+    padding: 18px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 1.1rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .action-btn:active { transform: scale(0.95); }
+  .action-btn .icon { font-size: 1.6rem; }
+  .action-btn.send {
+    background: rgba(0,212,255,0.08);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .action-btn.stop {
+    background: rgba(255,59,92,0.08);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .action-btn.run {
+    background: rgba(0,232,122,0.08);
+    border-color: var(--green);
+    color: var(--green);
+  }
+  .action-btn:disabled {
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  /* ── Section card ── */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 10px 14px;
+    background: var(--panel2);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-header .live-badge {
+    margin-left: auto;
+    font-size: 0.55rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0,232,122,0.15);
+    color: var(--green);
+    border: 1px solid rgba(0,232,122,0.3);
+    letter-spacing: 0.1em;
+    display: none;
+  }
+  .card-header .live-badge.visible { display: block; }
+
+  /* ── Battery ── */
+  .battery-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+  .battery-cell {
+    background: var(--panel);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .battery-label {
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .battery-bar-wrap {
+    height: 8px;
+    background: var(--panel2);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .battery-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s, background 0.5s;
+    background: var(--green);
+  }
+  .battery-pct {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 1.6rem;
+    line-height: 1;
+    color: var(--text);
+  }
+  .battery-volt {
+    font-size: 0.65rem;
+    color: var(--muted);
+  }
+
+  /* ── Proximity sensors ── */
+  .ps-grid {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .ps-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .ps-label {
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .ps-ring {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-family: var(--display);
+    font-weight: 600;
+    transition: border-color 0.2s, background 0.2s, color 0.2s, box-shadow 0.2s;
+    color: var(--muted);
+    position: relative;
+  }
+  .ps-ring.low  {
+    border-color: var(--border);
+    color: var(--muted);
+    background: transparent;
+  }
+  .ps-ring.med  {
+    border-color: var(--yellow);
+    color: var(--yellow);
+    background: rgba(255,214,0,0.08);
+    box-shadow: 0 0 8px rgba(255,214,0,0.25);
+  }
+  .ps-ring.high {
+    border-color: var(--red);
+    color: var(--red);
+    background: rgba(255,59,92,0.15);
+    box-shadow: 0 0 12px rgba(255,59,92,0.4);
+  }
+
+  /* ── ToF ── */
+  .tof-display {
+    padding: 16px 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .tof-value {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 3rem;
+    line-height: 1;
+    color: var(--accent);
+    transition: color 0.3s;
+  }
+  .tof-value.near { color: var(--red); }
+  .tof-value.mid  { color: var(--yellow); }
+  .tof-unit {
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-family: var(--display);
+    font-weight: 300;
+  }
+  .tof-bar-wrap {
+    margin: 0 14px 14px;
+    height: 6px;
+    background: var(--panel2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .tof-bar {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 0.2s, background 0.2s;
+  }
+
+  /* ── IMU ── */
+  .imu-grid {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .imu-cell {
+    background: var(--panel2);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .imu-cell-label {
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .imu-cell-val {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 1.4rem;
+    color: var(--text);
+  }
+  .imu-cell-val span { font-size: 0.7rem; color: var(--muted); font-weight: 300; }
+
+  /* ── Log ── */
+  .log-body {
+    padding: 10px 14px;
+    font-size: 0.65rem;
+    line-height: 1.7;
+    max-height: 160px;
+    overflow-y: auto;
+    color: var(--muted);
+  }
+  .log-body .log-info   { color: var(--text); }
+  .log-body .log-action { color: var(--accent); }
+  .log-body .log-warn   { color: var(--red); }
+  .log-body .log-ts     { color: var(--muted); margin-right: 6px; }
+
+  /* ── Ground sensors ── */
+  .ground-row {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .ground-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .ground-label {
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .ground-bar-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--panel2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .ground-bar { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.2s; }
+  .ground-val {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    font-size: 0.6rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    bottom: 0;
+  }
+  .status-bar .status-text { flex: 1; }
+  .status-bar.running { color: var(--green); border-top-color: rgba(0,232,122,0.3); }
+  .status-bar.error   { color: var(--red);   border-top-color: rgba(255,59,92,0.3); }
+
+  /* ── Robot SVG indicator ── */
+  .robot-viz {
+    padding: 14px;
+    display: flex;
+    justify-content: center;
+  }
+  .robot-viz svg { width: 120px; height: 120px; }
+
+  /* ── LED circles ── */
+  .led-circle {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: var(--lc);
+    border: 2px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+    position: relative;
+  }
+  .led-circle:active { transform: scale(0.9); }
+  .led-circle.on {
+    border-color: var(--lc);
+    box-shadow: 0 0 14px var(--lc), 0 0 4px var(--lc);
+  }
+  .led-bin { border-radius: 6px; }
+
+  /* ── Tuning panel ── */
+  .trow {
+    margin-bottom: 10px;
+  }
+  .tlabel {
+    font-size: 0.62rem;
+    color: var(--text);
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tval {
+    font-family: var(--display);
+    font-weight: 700;
+    color: #00e87a;
+    font-size: 0.8rem;
+  }
+  .tslider {
+    width: 100%;
+    accent-color: #00e87a;
+    margin: 2px 0;
+  }
+  .thint {
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* ── Quick program buttons ── */
+  .qbtn {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 10px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.12s;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  .qbtn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--qc);
+    opacity: 0;
+    transition: opacity 0.12s;
+    border-radius: 12px;
+  }
+  .qbtn:active::before { opacity: 0.12; }
+  .qbtn:active { transform: scale(0.95); border-color: var(--qc); }
+  .qbtn.running { border-color: var(--qc); box-shadow: 0 0 12px rgba(from var(--qc) r g b / 0.3); }
+  .qicon {
+    font-size: 1.8rem;
+    line-height: 1;
+  }
+  .qname {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    color: var(--qc);
+    text-transform: uppercase;
+  }
+  .qdesc {
+    font-size: 0.58rem;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+
+  /* ── D-pad ── */
+  .dpad-btn {
+    width: 100%; aspect-ratio: 1;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--text);
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.08s;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .dpad-btn:active, .dpad-btn.active {
+    background: rgba(0,212,255,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: scale(0.93);
+  }
+  .dpad-stop {
+    background: rgba(255,59,92,0.08);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  .dpad-stop:active {
+    background: rgba(255,59,92,0.25);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+
+  <div>
+    <div class="logo">e-puck2 <span>/ remote</span></div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="hdrDot"></div>
+    <span id="hdrLabel">OFFLINE</span>
+  </div>
+</header>
+
+<div class="connect-section">
+  <div class="ip-row">
+    <span class="ip-label">Robot IP</span>
+    <input class="ip-input" id="ipInput" type="text" inputmode="numeric"
+           value="192.168.0.116" placeholder="192.168.0.x" />
+    <button class="connect-btn" id="connectBtn" onclick="toggleConnect()">Connect</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Action buttons -->
+  <div class="action-row">
+    <button class="action-btn send" id="sendBtn" onclick="sendProgram()" disabled>
+      <span class="icon">🚀</span>Send
+    </button>
+    <button class="action-btn stop" id="stopBtn" onclick="stopRobot()" disabled>
+      <span class="icon">⛔</span>Stop
+    </button>
+  </div>
+
+  <!-- Battery -->
+  <div class="card">
+    <div class="card-header">
+      🔋 Battery
+      <span class="live-badge" id="batLive">LIVE</span>
+    </div>
+    <div class="battery-row">
+      <div class="battery-cell">
+        <div class="battery-label">e-puck2</div>
+        <div class="battery-pct" id="batEpuckPct">—</div>
+        <div class="battery-volt" id="batEpuckV">—</div>
+        <div class="battery-bar-wrap">
+          <div class="battery-bar" id="batEpuckBar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="battery-cell">
+        <div class="battery-label">Extension</div>
+        <div class="battery-pct" id="batExtPct">—</div>
+        <div class="battery-volt" id="batExtV">—</div>
+        <div class="battery-bar-wrap">
+          <div class="battery-bar" id="batExtBar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick programs -->
+  <div class="card">
+    <div class="card-header">⚡ Quick Programs</div>
+    <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+      <button class="qbtn" onclick="quickRun('wander')" style="--qc:#00d4ff;">
+        <span class="qicon">🌀</span>
+        <span class="qname">Wander</span>
+        <span class="qdesc">Random exploration</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('avoid')" style="--qc:#00e87a;">
+        <span class="qicon">🛡</span>
+        <span class="qname">Avoid</span>
+        <span class="qdesc">Obstacle avoidance</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('spin')" style="--qc:#ffd600;">
+        <span class="qicon">💫</span>
+        <span class="qname">Spin</span>
+        <span class="qdesc">Spin in place</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('dance')" style="--qc:#ff7c3a;">
+        <span class="qicon">🕺</span>
+        <span class="qname">Dance</span>
+        <span class="qdesc">LEDs + movement</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('shy')" style="--qc:#b06bff;">
+        <span class="qicon">😰</span>
+        <span class="qname">Shy</span>
+        <span class="qdesc">Runs from people</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('hugger')" style="--qc:#00e87a;">
+        <span class="qicon">🧱</span>
+        <span class="qname">Hugger</span>
+        <span class="qdesc">Follows right wall</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('zigzag')" style="--qc:#00d4ff;">
+        <span class="qicon">⚡</span>
+        <span class="qname">Zigzag</span>
+        <span class="qdesc">Weaving pattern</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('follow')" style="--qc:#ff3b5c;">
+        <span class="qicon">🤖</span>
+        <span class="qname">Follow</span>
+        <span class="qdesc">Follow the light</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('distance_keeper')" style="--qc:#00d4ff;">
+        <span class="qicon">📏</span>
+        <span class="qname">Keeper</span>
+        <span class="qdesc">Hold distance (ToF)</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('speed_controller')" style="--qc:#ffd600;">
+        <span class="qicon">🎚</span>
+        <span class="qname">Brakes</span>
+        <span class="qdesc">Speed by distance</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('line_follower')" style="--qc:#00e87a;">
+        <span class="qicon">〰️</span>
+        <span class="qname">Line</span>
+        <span class="qdesc">Follow black line</span>
+      </button>
+
+      <button class="qbtn" onclick="quickRun('boundary_patrol')" style="--qc:#ff7c3a;">
+        <span class="qicon">🔲</span>
+        <span class="qname">Patrol</span>
+        <span class="qdesc">Stay in boundary</span>
+      </button>
+
+    </div>
+
+    <!-- Hugger tuning panel — shown when hugger is active -->
+    <div id="huggerTuning" style="margin:0 12px 12px;background:var(--panel2);border:1px solid rgba(0,232,122,0.25);border-radius:10px;padding:12px;display:none;">
+      <div style="font-family:var(--display);font-weight:700;font-size:0.7rem;color:#00e87a;letter-spacing:0.1em;margin-bottom:10px;">🧱 HUGGER TUNING</div>
+
+      <div class="trow">
+        <div class="tlabel">Detection Threshold <span class="tval" id="vWallFound">180</span></div>
+        <input type="range" class="tslider" id="sWallFound" min="50" max="600" value="180"
+          oninput="document.getElementById('vWallFound').textContent=this.value">
+        <div class="thint">ps[2] value to detect wall — lower = more sensitive</div>
+      </div>
+
+      <div class="trow">
+        <div class="tlabel">Turn Speed <span class="tval" id="vTurnSpeed">55</span>%</div>
+        <input type="range" class="tslider" id="sTurnSpeed" min="20" max="90" value="55"
+          oninput="document.getElementById('vTurnSpeed').textContent=this.value">
+        <div class="thint">speed during turns — lower = smoother corners</div>
+      </div>
+
+      <button onclick="restartHugger()"
+        style="margin-top:10px;width:100%;background:rgba(0,232,122,0.1);border:1px solid #00e87a;
+               color:#00e87a;font-family:var(--mono);font-size:0.7rem;padding:9px;border-radius:8px;cursor:pointer;letter-spacing:0.06em;">
+        ▶ RESTART WITH NEW VALUES
+      </button>
+    </div>
+
+    <div id="qprogStatus" style="padding:0 12px 12px;font-size:0.62rem;color:var(--muted);min-height:18px;"></div>
+  </div>
+
+  <!-- Robot face -->
+  <div class="card">
+    <div class="card-header">🤖 Robot Face</div>
+    <div style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <canvas id="faceCanvas" width="200" height="200" style="width:180px;height:180px;"></canvas>
+      <div id="faceMoodLabel" style="font-family:var(--display);font-weight:600;font-size:0.75rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);">IDLE</div>
+    </div>
+  </div>
+
+  <!-- Radar view -->
+  <div class="card">
+    <div class="card-header">
+      📡 Proximity Radar
+      <span class="live-badge" id="psLive">LIVE</span>
+    </div>
+    <div style="padding:14px;display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <canvas id="radarCanvas" width="280" height="280" style="width:100%;max-width:280px;"></canvas>
+      <!-- Raw values below radar -->
+      <div id="psGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%;"></div>
+    </div>
+  </div>
+
+  <!-- ToF -->
+  <div class="card">
+    <div class="card-header">
+      📏 ToF Distance
+      <span class="live-badge" id="tofLive">LIVE</span>
+    </div>
+    <div class="tof-display">
+      <div class="tof-value" id="tofVal">—</div>
+      <div class="tof-unit">mm</div>
+    </div>
+    <div class="tof-bar-wrap">
+      <div class="tof-bar" id="tofBar" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Ground sensors -->
+  <div class="card">
+    <div class="card-header">
+      🌱 Ground Sensors
+      <span class="live-badge" id="gsLive">LIVE</span>
+    </div>
+    <div class="ground-row">
+      <div class="ground-cell">
+        <div class="ground-label">Left</div>
+        <div class="ground-val" id="gsL">—</div>
+        <div class="ground-bar-wrap"><div class="ground-bar" id="gsBarL" style="width:0%"></div></div>
+      </div>
+      <div class="ground-cell">
+        <div class="ground-label">Center</div>
+        <div class="ground-val" id="gsC">—</div>
+        <div class="ground-bar-wrap"><div class="ground-bar" id="gsBarC" style="width:0%"></div></div>
+      </div>
+      <div class="ground-cell">
+        <div class="ground-label">Right</div>
+        <div class="ground-val" id="gsR">—</div>
+        <div class="ground-bar-wrap"><div class="ground-bar" id="gsBarR" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMU -->
+  <div class="card">
+    <div class="card-header">
+      🧭 IMU
+      <span class="live-badge" id="imuLive">LIVE</span>
+    </div>
+    <div class="imu-grid">
+      <div class="imu-cell">
+        <div class="imu-cell-label">Roll</div>
+        <div class="imu-cell-val" id="imuRoll">—<span>°</span></div>
+      </div>
+      <div class="imu-cell">
+        <div class="imu-cell-label">Pitch</div>
+        <div class="imu-cell-val" id="imuPitch">—<span>°</span></div>
+      </div>
+      <div class="imu-cell">
+        <div class="imu-cell-label">Heading</div>
+        <div class="imu-cell-val" id="imuHeading">—<span>°</span></div>
+      </div>
+      <div class="imu-cell">
+        <div class="imu-cell-label">|g|</div>
+        <div class="imu-cell-val" id="imuG">—<span>g</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wheel control -->
+  <div class="card">
+    <div class="card-header">🎮 Wheel Control</div>
+
+    <!-- Speed slider -->
+    <div style="padding:12px 14px 0;display:flex;align-items:center;gap:10px;">
+      <span style="font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;white-space:nowrap;">Speed</span>
+      <input type="range" id="wheelSpeed" min="10" max="100" value="50"
+        style="flex:1;accent-color:var(--accent);"
+        oninput="document.getElementById('wheelSpeedLbl').textContent=this.value+'%'">
+      <span id="wheelSpeedLbl" style="font-family:var(--display);font-weight:600;font-size:0.9rem;color:var(--accent);width:38px;text-align:right;">50%</span>
+    </div>
+
+    <!-- D-pad -->
+    <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;gap:8px;max-width:220px;margin:0 auto;">
+      <div></div>
+      <button class="dpad-btn" id="wFwd"
+        ontouchstart="wheelPress('forward');event.preventDefault()"
+        ontouchend="wheelRelease();event.preventDefault()"
+        onmousedown="wheelPress('forward')" onmouseup="wheelRelease()">▲</button>
+      <div></div>
+
+      <button class="dpad-btn" id="wLeft"
+        ontouchstart="wheelPress('left');event.preventDefault()"
+        ontouchend="wheelRelease();event.preventDefault()"
+        onmousedown="wheelPress('left')" onmouseup="wheelRelease()">◄</button>
+      <button class="dpad-btn dpad-stop" id="wStop"
+        ontouchstart="wheelStop();event.preventDefault()"
+        ontouchend="event.preventDefault()"
+        onmousedown="wheelStop()">■</button>
+      <button class="dpad-btn" id="wRight"
+        ontouchstart="wheelPress('right');event.preventDefault()"
+        ontouchend="wheelRelease();event.preventDefault()"
+        onmousedown="wheelPress('right')" onmouseup="wheelRelease()">►</button>
+
+      <div></div>
+      <button class="dpad-btn" id="wBack"
+        ontouchstart="wheelPress('backward');event.preventDefault()"
+        ontouchend="wheelRelease();event.preventDefault()"
+        onmousedown="wheelPress('backward')" onmouseup="wheelRelease()">▼</button>
+      <div></div>
+    </div>
+
+    <!-- Live readout -->
+    <div style="padding:0 14px 14px;display:flex;justify-content:space-between;">
+      <span style="font-size:0.6rem;color:var(--muted);">L: <span id="wReadL" style="color:var(--text);">0</span>%</span>
+      <span style="font-size:0.6rem;color:var(--muted);">R: <span id="wReadR" style="color:var(--text);">0</span>%</span>
+    </div>
+  </div>
+
+  <!-- LED Controls -->
+  <div class="card">
+    <div class="card-header">💡 LED Controls</div>
+    <div style="padding:14px;display:flex;flex-direction:column;gap:12px;">
+
+      <!-- RGB LEDs (4 of them) -->
+      <div style="font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">RGB LEDs (2, 4, 6, 8)</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div id="rgbLed0" class="led-circle" onclick="toggleRgbLed(0)" style="--lc:#333;"></div>
+        <div id="rgbLed1" class="led-circle" onclick="toggleRgbLed(1)" style="--lc:#333;"></div>
+        <div id="rgbLed2" class="led-circle" onclick="toggleRgbLed(2)" style="--lc:#333;"></div>
+        <div id="rgbLed3" class="led-circle" onclick="toggleRgbLed(3)" style="--lc:#333;"></div>
+      </div>
+
+      <!-- Color picker for RGB -->
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:0.6rem;color:var(--muted);">Color:</span>
+        <input type="color" id="ledColorPicker" value="#00e5ff"
+          style="width:44px;height:32px;border:1px solid var(--border);border-radius:6px;background:none;cursor:pointer;padding:2px;">
+        <button onclick="setAllRgbLeds()" style="flex:1;background:rgba(0,212,255,0.1);border:1px solid var(--accent);
+          color:var(--accent);font-family:var(--mono);font-size:0.62rem;padding:6px;border-radius:6px;cursor:pointer;">
+          All ON
+        </button>
+        <button onclick="allLedsOff()" style="flex:1;background:var(--panel2);border:1px solid var(--border);
+          color:var(--muted);font-family:var(--mono);font-size:0.62rem;padding:6px;border-radius:6px;cursor:pointer;">
+          All OFF
+        </button>
+      </div>
+
+      <!-- Binary LEDs (1, 3, 5, 7) -->
+      <div style="font-size:0.6rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;">Binary LEDs (1, 3, 5, 7)</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+        <div id="binLed0" class="led-circle led-bin" onclick="toggleBinLed(0)" style="--lc:#333;"></div>
+        <div id="binLed1" class="led-circle led-bin" onclick="toggleBinLed(1)" style="--lc:#333;"></div>
+        <div id="binLed2" class="led-circle led-bin" onclick="toggleBinLed(2)" style="--lc:#333;"></div>
+        <div id="binLed3" class="led-circle led-bin" onclick="toggleBinLed(3)" style="--lc:#333;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      📋 Log
+      <button onclick="document.getElementById('logBody').innerHTML=''"
+        style="margin-left:auto;background:none;border:1px solid var(--border);color:var(--muted);
+               font-family:var(--mono);font-size:0.6rem;padding:2px 8px;border-radius:4px;cursor:pointer;">
+        clear
+      </button>
+    </div>
+    <div class="log-body" id="logBody">
+      <span style="color:var(--muted)">— waiting for connection —</span>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<div class="status-bar" id="statusBar">
+  <div class="status-dot" id="statusDot" style="width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;"></div>
+  <div class="status-text" id="statusText">Not connected</div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let ws = null;
+let wsConnected = false;
+let robotRunning = false;
+let batTimer = null;
+
+function getRobotBase() {
+  const ip = document.getElementById('ipInput').value.trim();
+  return 'http://' + ip + ':5000';
+}
+function getWsUrl() {
+  const ip = document.getElementById('ipInput').value.trim();
+  return 'ws://' + ip + ':5000/ws';
+}
+
+// ── PS grid init (small value labels below radar) ────────────────────────
+(function initPsGrid() {
+  const labels = ['ps0','ps1','ps2','ps3','ps4','ps5','ps6','ps7'];
+  const grid = document.getElementById('psGrid');
+  if (!grid) return;
+  labels.forEach((l, i) => {
+    grid.innerHTML += `
+      <div class="ps-cell">
+        <div class="ps-ring low" id="ps${i}ring">0</div>
+        <div class="ps-label">${l}</div>
+      </div>`;
+  });
+})();
+
+// ── Radar ─────────────────────────────────────────────────────────────────
+const PS_ANGLES = [10, 45, 90, 154, 205, 270, 315, 350];
+const PS_MAX    = 4000;
+let   _psValues = [0,0,0,0,0,0,0,0];
+let   _radarAnim = 0;
+
+function drawRadar(ps) {
+  const canvas = document.getElementById('radarCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  const R  = Math.min(W,H)/2 - 20;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Background rings
+  for (let r = 1; r <= 4; r++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R*r/4, 0, Math.PI*2);
+    ctx.strokeStyle = r===4 ? '#252a32' : '#181c22';
+    ctx.lineWidth   = r===4 ? 1.5 : 0.8;
+    ctx.stroke();
+  }
+
+  // Grid spokes
+  PS_ANGLES.forEach(deg => {
+    const a = (deg-90)*Math.PI/180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R);
+    ctx.strokeStyle = '#1a1f27';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  });
+
+  // Sweep line
+  _radarAnim = (_radarAnim + 1.8) % 360;
+  const sa = (_radarAnim-90)*Math.PI/180;
+  const sg = ctx.createLinearGradient(cx,cy, cx+Math.cos(sa)*R, cy+Math.sin(sa)*R);
+  sg.addColorStop(0, 'rgba(0,212,255,0)');
+  sg.addColorStop(1, 'rgba(0,212,255,0.5)');
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx+Math.cos(sa)*R, cy+Math.sin(sa)*R);
+  ctx.strokeStyle = sg;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Sweep trailing wedge
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, R, sa-0.6, sa, false);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,212,255,0.05)';
+  ctx.fill();
+
+  // Obstacle polygon
+  const pts = PS_ANGLES.map((deg,i) => {
+    const norm = Math.min(1, (ps[i]||0)/PS_MAX);
+    const dist = R*(1 - norm*0.82);
+    const a    = (deg-90)*Math.PI/180;
+    return {x: cx+Math.cos(a)*dist, y: cy+Math.sin(a)*dist, norm};
+  });
+
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+  ctx.closePath();
+  const pg = ctx.createRadialGradient(cx,cy,0, cx,cy,R*0.5);
+  pg.addColorStop(0, 'rgba(0,212,255,0.15)');
+  pg.addColorStop(1, 'rgba(0,212,255,0.03)');
+  ctx.fillStyle = pg;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,212,255,0.45)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Sensor dots
+  pts.forEach((pt, i) => {
+    const n = pt.norm;
+    const color = n < 0.05 ? '#4a5568' : n < 0.25 ? '#00e87a' : n < 0.6 ? '#ffd600' : '#ff3b5c';
+    if (n > 0.05) {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 8+n*8, 0, Math.PI*2);
+      ctx.fillStyle = n>0.6 ? 'rgba(255,59,92,0.15)' : n>0.25 ? 'rgba(255,214,0,0.12)' : 'rgba(0,232,122,0.1)';
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4+n*4, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    // Label
+    const la = (PS_ANGLES[i]-90)*Math.PI/180;
+    ctx.fillStyle = '#4a5568';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ps'+i, cx+Math.cos(la)*(R+14), cy+Math.sin(la)*(R+14));
+  });
+
+  // Robot body
+  ctx.beginPath();
+  ctx.arc(cx, cy, 14, 0, Math.PI*2);
+  ctx.fillStyle = '#0a4f7a';
+  ctx.fill();
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Forward arrow
+  ctx.beginPath();
+  ctx.moveTo(cx, cy-9);
+  ctx.lineTo(cx-4, cy+4);
+  ctx.lineTo(cx+4, cy+4);
+  ctx.closePath();
+  ctx.fillStyle = '#00d4ff';
+  ctx.fill();
+}
+
+// Continuous animation loop
+(function radarLoop() {
+  drawRadar(_psValues);
+  requestAnimationFrame(radarLoop);
+})();
+
+// ── Connect ───────────────────────────────────────────────────────────────
+async function toggleConnect() {
+  if (wsConnected) { disconnectRobot(); return; }
+  await connectRobot();
+}
+
+async function connectRobot() {
+  const btn = document.getElementById('connectBtn');
+  const dot = document.getElementById('hdrDot');
+  btn.textContent = 'Connecting…';
+  btn.className = 'connect-btn connecting';
+  dot.className = 'status-dot connecting';
+  document.getElementById('hdrLabel').textContent = 'CONNECTING';
+
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 3000);
+    let res, data;
+    try {
+      res = await fetch(getRobotBase() + '/ping', { signal: controller.signal });
+      clearTimeout(tid);
+      data = await res.json();
+    } catch(fetchErr) {
+      clearTimeout(tid);
+      throw new Error('Fetch failed: ' + fetchErr.message + ' | URL: ' + getRobotBase() + '/ping');
+    }
+    if (!data.ok) throw new Error('bad ping');
+  } catch(e) {
+    btn.textContent = 'Unreachable';
+    btn.className = 'connect-btn error';
+    dot.className = 'status-dot error';
+    document.getElementById('hdrLabel').textContent = 'ERROR';
+    setStatus('error', e.message);
+    addLog('✗ ' + e.message, 'warn');
+    setTimeout(() => { btn.textContent = 'Connect'; btn.className = 'connect-btn'; dot.className = 'status-dot'; document.getElementById('hdrLabel').textContent = 'OFFLINE'; }, 5000);
+    return;
+  }
+
+  ws = new WebSocket(getWsUrl());
+  ws.onopen = () => {
+    wsConnected = true;
+    btn.textContent = '● Connected';
+    btn.className = 'connect-btn connected';
+    dot.className = 'status-dot connected';
+    document.getElementById('hdrLabel').textContent = 'LIVE';
+    document.getElementById('sendBtn').disabled = false;
+    setStatus('idle', 'Connected — ready');
+    addLog('✓ Connected to ' + document.getElementById('ipInput').value, 'info');
+    showLiveBadges(true);
+    startBatteryPolling();
+  };
+  ws.onmessage = (evt) => {
+    try { handleMsg(JSON.parse(evt.data)); } catch(e) {}
+  };
+  ws.onclose = () => {
+    wsConnected = false;
+    robotRunning = false;
+    btn.textContent = 'Connect';
+    btn.className = 'connect-btn';
+    dot.className = 'status-dot';
+    document.getElementById('hdrLabel').textContent = 'OFFLINE';
+    document.getElementById('sendBtn').disabled = true;
+    document.getElementById('stopBtn').disabled = true;
+    setStatus('idle', 'Disconnected');
+    showLiveBadges(false);
+    stopBatteryPolling();
+  };
+}
+
+function disconnectRobot() {
+  if (ws) { ws.close(); ws = null; }
+}
+
+// ── Message handler ───────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (msg.type === 'ping') return;
+
+  if (msg.type === 'sensors' && msg.data) {
+    const d = msg.data;
+    if (d.ps)     updatePs(d.ps);
+    if (d.ground) updateGround(d.ground);
+    if (typeof d.tof_mm !== 'undefined') updateTof(d.tof_mm);
+    if (d.imu)    updateImu(d.imu);
+    if (d.mag)    updateMag(d.mag);
+  }
+
+  if (msg.type === 'status') {
+    if (msg.data === 'running') {
+      robotRunning = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('sendBtn').disabled = true;
+      setStatus('running', '🤖 Running on robot…');
+    } else if (msg.data === 'idle' && !robotRunning) {
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('sendBtn').disabled = false;
+      setStatus('idle', 'Robot ready');
+    } else if (msg.data === 'error') {
+      robotRunning = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('sendBtn').disabled = false;
+      setStatus('error', '✗ ' + (msg.error || 'Robot error'));
+    }
+  }
+
+  if (msg.type === 'log' && msg.data) {
+    addLog(msg.data, msg.data.startsWith('✗') ? 'warn' : 'action');
+  }
+}
+
+// ── Sensor updates ────────────────────────────────────────────────────────
+function updatePs(ps) {
+  _psValues = ps;
+  _face.maxPs = Math.max(...ps);   // feed face
+  // Update small value rings below radar
+  ps.forEach((v, i) => {
+    const ring = document.getElementById('ps' + i + 'ring');
+    if (!ring) return;
+    const pct   = Math.min(100, Math.round(v / 40));
+    const level = v > 800 ? 'high' : v > 200 ? 'med' : 'low';
+    ring.className = 'ps-ring ' + level;
+    ring.textContent = v > 9999 ? '9k+' : v;
+    const fillPct = Math.round(pct * 0.45);
+    const colors = {
+      low:  `rgba(74,85,104,${pct/100*0.6})`,
+      med:  `rgba(255,214,0,${pct/100*0.35})`,
+      high: `rgba(255,59,92,${pct/100*0.5})`,
+    };
+    ring.style.background = fillPct > 2
+      ? `radial-gradient(circle, ${colors[level]} ${fillPct}%, transparent ${fillPct+10}%)`
+      : 'transparent';
+  });
+}
+
+function updateGround(g) {
+  ['L','C','R'].forEach((k, i) => {
+    const val = g[i] || 0;
+    document.getElementById('gs' + k).textContent = val;
+    document.getElementById('gsBar' + k).style.width = Math.min(100, val / 10.23) + '%';
+  });
+}
+
+function updateTof(mm) {
+  _face.tof = mm;   // feed face
+  const el = document.getElementById('tofVal');
+  const bar = document.getElementById('tofBar');
+  if (mm < 0) {
+    el.textContent = '—'; el.className = 'tof-value';
+    bar.style.width = '0%'; bar.style.background = 'var(--accent)';
+    return;
+  }
+  el.textContent = mm;
+  const pct = Math.max(0, Math.min(100, (1300 - mm) / 13));
+  bar.style.width = pct + '%';
+  if (mm < 150)       { el.className = 'tof-value near'; bar.style.background = 'var(--red)'; }
+  else if (mm < 400)  { el.className = 'tof-value mid';  bar.style.background = 'var(--yellow)'; }
+  else                { el.className = 'tof-value';      bar.style.background = 'var(--accent)'; }
+}
+
+function updateImu(imu) {
+  const acc = imu.acc || [0,0,1];
+  const roll  = Math.atan2(acc[1], acc[2]) * 180 / Math.PI;
+  const pitch = Math.atan2(-acc[0], Math.sqrt(acc[1]*acc[1]+acc[2]*acc[2])) * 180 / Math.PI;
+  const g = Math.sqrt(acc[0]*acc[0]+acc[1]*acc[1]+acc[2]*acc[2]);
+  _face.roll  = roll;    // feed face
+  _face.pitch = pitch;
+  document.getElementById('imuRoll').innerHTML  = roll.toFixed(1)  + '<span>°</span>';
+  document.getElementById('imuPitch').innerHTML = pitch.toFixed(1) + '<span>°</span>';
+  document.getElementById('imuG').innerHTML     = g.toFixed(2)     + '<span>g</span>';
+  document.getElementById('imuLive').classList.add('visible');
+}
+
+function updateMag(mag) {
+  if (typeof mag.heading !== 'undefined') {
+    document.getElementById('imuHeading').innerHTML = Math.round(mag.heading) + '<span>°</span>';
+  }
+}
+
+// ── Battery polling ───────────────────────────────────────────────────────
+function startBatteryPolling() {
+  fetchBattery();
+  batTimer = setInterval(fetchBattery, 15000);
+  document.getElementById('batLive').classList.add('visible');
+}
+function stopBatteryPolling() {
+  if (batTimer) { clearInterval(batTimer); batTimer = null; }
+  document.getElementById('batLive').classList.remove('visible');
+}
+async function fetchBattery() {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch(getRobotBase() + '/battery', { signal: controller.signal });
+    clearTimeout(tid);
+    const d = await res.json();
+    if (!d.ok) return;
+    // Server returns: {epuck: {voltage, percent}, ext: {voltage, percent}}
+    if (d.epuck && d.epuck.percent !== undefined) setBattery('Epuck', d.epuck.percent, d.epuck.voltage);
+    if (d.ext   && d.ext.percent   !== undefined) setBattery('Ext',   d.ext.percent,   d.ext.voltage);
+  } catch(e) {}
+}
+function setBattery(id, pct, v) {
+  const p = Math.round(pct || 0);
+  const color = p > 50 ? 'var(--green)' : p > 20 ? 'var(--yellow)' : 'var(--red)';
+  document.getElementById('bat' + id + 'Pct').textContent = p + '%';
+  document.getElementById('bat' + id + 'V').textContent   = (v || 0).toFixed(2) + 'V';
+  const bar = document.getElementById('bat' + id + 'Bar');
+  bar.style.width = p + '%';
+  bar.style.background = color;
+}
+
+// ── Send / Stop ───────────────────────────────────────────────────────────
+async function sendProgram() {
+  if (!wsConnected) { addLog('Not connected', 'warn'); return; }
+  // Fetch latest program code from the desktop page if available,
+  // otherwise show a message directing user to the desktop
+  addLog('📲 Use the desktop editor to build & send programs', 'info');
+  addLog('💡 This mobile page monitors sensors & stops the robot', 'info');
+}
+
+async function stopRobot() {
+  try {
+    addLog('⛔ Stopping robot…', 'info');
+    await fetch(getRobotBase() + '/stop', { method: 'POST' });
+    robotRunning = false;
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('sendBtn').disabled = false;
+    document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('running'));
+    document.getElementById('qprogStatus').textContent = '';
+    document.getElementById('huggerTuning').style.display = 'none';
+    setStatus('idle', 'Robot stopped');
+    // Reset LEDs and speaker after stop
+    await fetch(getRobotBase() + '/leds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        binary: [0, 0, 0, 0],
+        rgb: [[0,0,0],[0,0,0],[0,0,0],[0,0,0]]
+      })
+    });
+    await fetch(getRobotBase() + '/speaker', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sound: 0 })
+    });
+  } catch(e) {
+    addLog('✗ Stop failed: ' + e.message, 'warn');
+  }
+}
+
+// ── Live badges ───────────────────────────────────────────────────────────
+function showLiveBadges(on) {
+  ['psLive','tofLive','gsLive'].forEach(id => {
+    document.getElementById(id).classList.toggle('visible', on);
+  });
+}
+
+// ── Log ───────────────────────────────────────────────────────────────────
+function addLog(msg, type) {
+  const body = document.getElementById('logBody');
+  const ts = new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+  const line = document.createElement('div');
+  line.innerHTML = '<span class="log-ts">' + ts + '</span>'
+    + '<span class="log-' + (type||'info') + '">' + msg + '</span>';
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+  // keep max 60 lines
+  while (body.children.length > 60) body.removeChild(body.firstChild);
+}
+
+// ── Status ────────────────────────────────────────────────────────────────
+function setStatus(type, text) {
+  const bar = document.getElementById('statusBar');
+  const dot = document.getElementById('statusDot');
+  document.getElementById('statusText').textContent = text;
+  bar.className = 'status-bar ' + (type === 'running' ? 'running' : type === 'error' ? 'error' : '');
+  const colors = { running: 'var(--green)', error: 'var(--red)', idle: 'var(--muted)' };
+  dot.style.background = colors[type] || 'var(--muted)';
+}
+
+// ── Quick programs ────────────────────────────────────────────────────────
+const PREAMBLE = `
+MAX_SPEED = 6.28
+CRUISE_SPEED = 0.8 * MAX_SPEED
+THRESHOLD = 500.0
+
+timestep = int(robot.getBasicTimeStep())
+
+left_motor = robot.getDevice('left wheel motor')
+right_motor = robot.getDevice('right wheel motor')
+left_motor.setPosition(float('inf'))
+right_motor.setPosition(float('inf'))
+left_motor.setVelocity(0.0)
+right_motor.setVelocity(0.0)
+
+sensors = []
+for i in range(8):
+    s = robot.getDevice(f'ps{i}')
+    s.enable(timestep)
+    sensors.append(s)
+`;
+
+const QUICK_PROGRAMS = {
+
+  wander: `
+import random
+while True:
+    ps = [sensors[i].getValue() for i in range(8)]
+    if ps[0] > THRESHOLD or ps[7] > THRESHOLD:
+        left_motor.setVelocity(-CRUISE_SPEED * 0.5)
+        right_motor.setVelocity( CRUISE_SPEED * 0.5)
+        robot.step(int(300 + random.random() * 400))
+    else:
+        spd = CRUISE_SPEED * (0.6 + random.random() * 0.4)
+        drift = (random.random() - 0.5) * 0.4
+        left_motor.setVelocity(spd * (1 + drift))
+        right_motor.setVelocity(spd * (1 - drift))
+    robot.step(timestep)
+`,
+
+  avoid: `
+_BASE = 100
+_MAX  = 600.0
+while True:
+    ps  = [sensors[i].getValue() for i in range(8)]
+    sig = [max(0.0, ps[i] - _BASE) / _MAX for i in range(8)]
+    _l  = CRUISE_SPEED - 1.5 * CRUISE_SPEED * (sig[0] + 0.5 * sig[1])
+    _r  = CRUISE_SPEED - 1.5 * CRUISE_SPEED * (sig[7] + 0.5 * sig[6])
+    left_motor.setVelocity(max(-MAX_SPEED, min(MAX_SPEED, _l)))
+    right_motor.setVelocity(max(-MAX_SPEED, min(MAX_SPEED, _r)))
+    robot.step(timestep)
+`,
+
+  spin: `
+import math
+t = 0
+while True:
+    spd = MAX_SPEED * 0.7 * math.sin(t * 0.05)
+    left_motor.setVelocity(spd)
+    right_motor.setVelocity(-spd)
+    for i in range(8):
+        robot.setBinaryLed(i % 4, 1 if (t // 10) % 2 == 0 else 0)
+    t += 1
+    robot.step(timestep)
+`,
+
+  dance: `
+moves = [
+    ( 0.8,  0.8, 600),
+    (-0.8, -0.8, 400),
+    ( 0.8, -0.8, 700),
+    (-0.8,  0.8, 700),
+    ( 0.6,  0.0, 400),
+    ( 0.0,  0.6, 400),
+    ( 0.9, -0.9, 800),
+]
+colors = [(100,0,0),(0,100,0),(0,0,100),(100,50,0),(0,100,80),(80,0,100)]
+sounds = [1, 2, 1, 3, 1, 2, 4]
+step_i = 0
+while True:
+    l_pct, r_pct, dur = moves[step_i % len(moves)]
+    left_motor.setVelocity(l_pct * MAX_SPEED)
+    right_motor.setVelocity(r_pct * MAX_SPEED)
+    c = colors[step_i % len(colors)]
+    for i in range(4):
+        robot.setRgbLed(i, c[0], c[1], c[2])
+    for i in range(4):
+        robot.setBinaryLed(i, (step_i + i) % 2)
+    robot.setSpeaker(sounds[step_i % len(sounds)])
+    robot.step(dur)
+    step_i += 1
+`,
+
+  shy: `
+import random
+FLEE_SPEED  = MAX_SPEED * 0.9
+CALM_SPEED  = MAX_SPEED * 0.3
+SHY_THRESH  = 300
+FLEE_THRESH = 800
+
+while True:
+    ps = [sensors[i].getValue() for i in range(8)]
+    front = max(ps[0], ps[7])
+    sides = max(ps[1], ps[2], ps[5], ps[6])
+    rear  = max(ps[3], ps[4])
+    any_ps = max(ps)
+
+    if front > FLEE_THRESH or any_ps > FLEE_THRESH:
+        # Panic — flash LEDs red, back away fast, spin away
+        for i in range(4):
+            robot.setRgbLed(i, 100, 0, 0)
+        robot.setBinaryLed(0, 1); robot.setBinaryLed(2, 1)
+        robot.setSpeaker(4)
+        left_motor.setVelocity(-FLEE_SPEED)
+        right_motor.setVelocity(-FLEE_SPEED)
+        robot.step(400)
+        # Spin away from the threat
+        spin_dir = 1 if ps[0] > ps[7] else -1
+        left_motor.setVelocity( spin_dir * FLEE_SPEED)
+        right_motor.setVelocity(-spin_dir * FLEE_SPEED)
+        robot.step(int(300 + random.random() * 400))
+        robot.setSpeaker(0)
+
+    elif any_ps > SHY_THRESH:
+        # Nervous — slow down, dim yellow LEDs, drift away
+        for i in range(4):
+            robot.setRgbLed(i, 60, 40, 0)
+        robot.setBinaryLed(0, 0); robot.setBinaryLed(2, 0)
+        robot.setSpeaker(1)
+        left_motor.setVelocity( CALM_SPEED * (1 if ps[7] < ps[0] else -0.3))
+        right_motor.setVelocity(CALM_SPEED * (1 if ps[0] < ps[7] else -0.3))
+        robot.step(200)
+        robot.setSpeaker(0)
+
+    else:
+        # Calm — gentle green glow, wander slowly
+        for i in range(4):
+            robot.setRgbLed(i, 0, 30, 10)
+        robot.setBinaryLed(0, 0); robot.setBinaryLed(2, 0)
+        drift = (random.random() - 0.5) * 0.6
+        left_motor.setVelocity( CALM_SPEED * (1 + drift))
+        right_motor.setVelocity(CALM_SPEED * (1 - drift))
+        robot.step(timestep)
+`,
+
+  hugger: (p) => `
+# ── Wall Hugger — bang-bang, 3 states, no blocking loops ─────────────
+ACTIV      = ${p.wallFound}
+TURN_SPD   = ${p.turnSpeed}
+FOUND_WALL = False
+TURNING_RIGHT = False
+
+while True:
+    ps = [sensors[i].getValue() for i in range(8)]
+
+    if ps[0] > ACTIV or ps[1] > ACTIV:
+        # Front wall → turn left, reset turning-right state
+        TURNING_RIGHT = False
+        for i in range(4): robot.setRgbLed(i, 80, 0, 80)
+        left_motor.setVelocity(-TURN_SPD / 100.0 * MAX_SPEED)
+        right_motor.setVelocity( TURN_SPD / 100.0 * MAX_SPEED)
+
+    elif TURNING_RIGHT:
+        # Turning right to find wall — check if wall reacquired
+        if ps[2] > ACTIV or ps[1] > ACTIV:
+            TURNING_RIGHT = False
+            FOUND_WALL    = True
+        else:
+            for i in range(4): robot.setRgbLed(i, 80, 40, 0)
+            left_motor.setVelocity( TURN_SPD / 100.0 * MAX_SPEED)
+            right_motor.setVelocity(0.0)
+
+    elif ps[2] < ACTIV and FOUND_WALL:
+        # Wall lost → start turning right
+        TURNING_RIGHT = True
+        for i in range(4): robot.setRgbLed(i, 80, 40, 0)
+        left_motor.setVelocity( TURN_SPD / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(0.0)
+
+    else:
+        # Wall present or searching → go straight
+        if ps[2] > ACTIV:
+            FOUND_WALL = True
+        for i in range(4): robot.setRgbLed(i, 0, 80, 20)
+        left_motor.setVelocity(CRUISE_SPEED)
+        right_motor.setVelocity(CRUISE_SPEED)
+
+    robot.step(timestep)
+`,
+
+  zigzag: `
+import math
+t       = 0
+PERIOD  = 60      # steps per full left-right cycle
+AMPLITUDE = 0.55  # how sharp the zigzag is (0=straight, 1=spinning)
+while True:
+    ps  = [sensors[i].getValue() for i in range(8)]
+    # Emergency avoid if obstacle too close
+    if max(ps[0], ps[7]) > 600:
+        left_motor.setVelocity(-CRUISE_SPEED * 0.5)
+        right_motor.setVelocity( CRUISE_SPEED * 0.5)
+        robot.step(300)
+        t = 0
+    else:
+        steer = math.sin(t * 2 * math.pi / PERIOD) * AMPLITUDE
+        left_motor.setVelocity( CRUISE_SPEED * (1 + steer))
+        right_motor.setVelocity(CRUISE_SPEED * (1 - steer))
+        # LEDs cycle colour with the zigzag
+        phase = (math.sin(steer * math.pi) + 1) / 2
+        r = int(phase * 80)
+        b = int((1 - phase) * 80)
+        for i in range(4): robot.setRgbLed(i, r, 20, b)
+        t += 1
+    robot.step(timestep)
+`,
+
+  follow: `
+import urllib.request as _ur, json as _json
+_ur.urlopen('http://localhost:5000/camera/open?device=1')
+robot.step(500)
+while True:
+    try:
+        _r = _json.loads(_ur.urlopen('http://localhost:5000/camera/analyze').read())
+        bl, br = _r.get('bright_left', 128), _r.get('bright_right', 128)
+        diff = bl - br
+        if diff > 10:
+            left_motor.setVelocity(CRUISE_SPEED * 0.2)
+            right_motor.setVelocity(CRUISE_SPEED * 0.8)
+        elif diff < -10:
+            left_motor.setVelocity(CRUISE_SPEED * 0.8)
+            right_motor.setVelocity(CRUISE_SPEED * 0.2)
+        else:
+            left_motor.setVelocity(CRUISE_SPEED * 0.6)
+            right_motor.setVelocity(CRUISE_SPEED * 0.6)
+    except:
+        pass
+    robot.step(timestep)
+`,
+
+  distance_keeper: `
+_tof = robot.getDevice('tof')
+_tof.enable(timestep)
+robot.step(timestep)
+
+TARGET_MM = 200
+DEAD_ZONE = 30
+SPEED_FWD  = 40
+SPEED_BACK = -40
+
+while True:
+    dist = _tof.getDistance()
+
+    if dist == -1:
+        left_motor.setVelocity(SPEED_FWD / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED_FWD / 100.0 * MAX_SPEED)
+    elif dist < TARGET_MM - DEAD_ZONE:
+        left_motor.setVelocity(SPEED_BACK / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED_BACK / 100.0 * MAX_SPEED)
+    elif dist > TARGET_MM + DEAD_ZONE:
+        left_motor.setVelocity(SPEED_FWD / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED_FWD / 100.0 * MAX_SPEED)
+    else:
+        left_motor.setVelocity(0)
+        right_motor.setVelocity(0)
+    robot.step(timestep)
+`,
+
+  speed_controller: `
+_tof = robot.getDevice('tof')
+_tof.enable(timestep)
+robot.step(timestep)
+
+STOP_MM    = 100
+FULL_MM    = 600
+SPEED_FULL = 70
+SPEED_SLOW = 10
+
+while True:
+    dist = _tof.getDistance()
+
+    if dist == -1 or dist > FULL_MM:
+        spd = SPEED_FULL
+    elif dist < STOP_MM:
+        spd = 0
+    else:
+        spd = int(SPEED_SLOW + (dist - STOP_MM) / float(FULL_MM - STOP_MM) * (SPEED_FULL - SPEED_SLOW))
+
+    left_motor.setVelocity(spd / 100.0 * MAX_SPEED)
+    right_motor.setVelocity(spd / 100.0 * MAX_SPEED)
+    robot.step(timestep)
+`,
+
+  line_follower: `
+_gs = robot.getDevice('ground_sensor')
+THRESHOLD  = 500
+SPEED      = 50
+SPEED_SLOW = 20
+TURN_90_MS = 660    # ms for 90 degree turn — tune if needed
+
+def do_turn(left_pct, right_pct, ms):
+    left_motor.setVelocity( left_pct  / 100.0 * MAX_SPEED)
+    right_motor.setVelocity(right_pct / 100.0 * MAX_SPEED)
+    robot.step(ms)
+    left_motor.setVelocity(0)
+    right_motor.setVelocity(0)
+    robot.step(100)
+
+while True:
+    gs_l = _gs.getLeft()
+    gs_r = _gs.getRight()
+    gs_c = _gs.getCenter()
+
+    corner = gs_l > THRESHOLD and gs_r > THRESHOLD and gs_c > THRESHOLD
+
+    if corner:
+        # All sensors lost the tape → corner
+        left_motor.setVelocity(0)
+        right_motor.setVelocity(0)
+        robot.step(200)
+        for i in range(4): robot.setRgbLed(i, 0, 80, 80)
+
+        # Try 90 degree right turn
+        do_turn(SPEED, -SPEED, TURN_90_MS)
+
+        # Check if on black now
+        if _gs.getLeft() < THRESHOLD or _gs.getCenter() < THRESHOLD or _gs.getRight() < THRESHOLD:
+            for i in range(4): robot.setRgbLed(i, 0, 80, 20)
+        else:
+            # Not found — turn 180 degrees left to try other side
+            for i in range(4): robot.setRgbLed(i, 80, 40, 0)
+            do_turn(-SPEED, SPEED, TURN_90_MS * 2)
+
+    elif gs_l < THRESHOLD and gs_r > THRESHOLD:
+        # Drifting right — steer left
+        for i in range(4): robot.setRgbLed(i, 0, 0, 80)
+        left_motor.setVelocity( SPEED_SLOW / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED      / 100.0 * MAX_SPEED)
+
+    elif gs_r < THRESHOLD and gs_l > THRESHOLD:
+        # Drifting left — steer right
+        for i in range(4): robot.setRgbLed(i, 0, 0, 80)
+        left_motor.setVelocity( SPEED      / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED_SLOW / 100.0 * MAX_SPEED)
+
+    else:
+        # Center or both on black — go straight
+        for i in range(4): robot.setRgbLed(i, 0, 60, 0)
+        left_motor.setVelocity( SPEED / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(SPEED / 100.0 * MAX_SPEED)
+
+    robot.step(timestep)
+`,
+
+  boundary_patrol: `
+import random
+_gs = robot.getDevice('ground_sensor')
+THRESHOLD  = 500
+SPEED      = 50
+TURN_SPEED = 50
+
+while True:
+    ps  = [sensors[i].getValue() for i in range(8)]
+    gs_l = _gs.getLeft()
+    gs_r = _gs.getRight()
+    gs_c = _gs.getCenter()
+    on_dark = gs_l < THRESHOLD or gs_r < THRESHOLD or gs_c < THRESHOLD
+
+    if on_dark:
+        # Hit boundary — back up and turn away
+        if gs_l < THRESHOLD and gs_r >= THRESHOLD:
+            # Dark on left → turn right
+            for i in range(4): robot.setRgbLed(i, 80, 0, 0)
+            left_motor.setVelocity( SPEED / 100.0 * MAX_SPEED)
+            right_motor.setVelocity(-SPEED / 100.0 * MAX_SPEED)
+            robot.step(400)
+        elif gs_r < THRESHOLD and gs_l >= THRESHOLD:
+            # Dark on right → turn left
+            for i in range(4): robot.setRgbLed(i, 80, 0, 0)
+            left_motor.setVelocity(-SPEED / 100.0 * MAX_SPEED)
+            right_motor.setVelocity( SPEED / 100.0 * MAX_SPEED)
+            robot.step(400)
+        else:
+            # Both dark → back up then random turn
+            for i in range(4): robot.setRgbLed(i, 80, 0, 0)
+            left_motor.setVelocity(-SPEED / 100.0 * MAX_SPEED)
+            right_motor.setVelocity(-SPEED / 100.0 * MAX_SPEED)
+            robot.step(300)
+            turn = 1 if random.random() > 0.5 else -1
+            left_motor.setVelocity( turn * TURN_SPEED / 100.0 * MAX_SPEED)
+            right_motor.setVelocity(-turn * TURN_SPEED / 100.0 * MAX_SPEED)
+            robot.step(int(300 + random.random() * 400))
+    elif ps[0] > 500 or ps[7] > 500:
+        # Obstacle ahead — turn away
+        for i in range(4): robot.setRgbLed(i, 80, 40, 0)
+        turn = 1 if ps[7] > ps[0] else -1
+        left_motor.setVelocity( turn * TURN_SPEED / 100.0 * MAX_SPEED)
+        right_motor.setVelocity(-turn * TURN_SPEED / 100.0 * MAX_SPEED)
+        robot.step(300)
+    else:
+        # All clear — wander forward with slight random drift
+        for i in range(4): robot.setRgbLed(i, 0, 60, 10)
+        drift = (random.random() - 0.5) * 0.3
+        left_motor.setVelocity( SPEED / 100.0 * MAX_SPEED * (1 + drift))
+        right_motor.setVelocity(SPEED / 100.0 * MAX_SPEED * (1 - drift))
+    robot.step(timestep)
+`,
+
+};
+
+async function restartHugger() {
+  // Stop current run first, then relaunch with new params
+  try {
+    await fetch(getRobotBase() + '/stop', { method: 'POST' });
+    robotRunning = false;
+  } catch(e) {}
+  // Small delay to let the robot settle, then restart
+  setTimeout(() => quickRun('hugger'), 400);
+}
+
+function getHuggerParams() {
+  return {
+    wallFound:  parseInt(document.getElementById('sWallFound').value),
+    turnSpeed:  parseInt(document.getElementById('sTurnSpeed').value),
+  };
+}
+
+let _activeQBtn = null;
+
+async function quickRun(name) {
+  if (!wsConnected) {
+    addLog('✗ Not connected — connect to robot first', 'warn');
+    return;
+  }
+
+  // Build code — hugger uses a function, others use plain strings
+  const prog = QUICK_PROGRAMS[name];
+  const code = PREAMBLE + (typeof prog === 'function' ? prog(getHuggerParams()) : prog);
+
+  // Show/hide tuning panel
+  const tuning = document.getElementById('huggerTuning');
+  tuning.style.display = name === 'hugger' ? 'block' : 'none';
+
+  const labels = {wander:'🌀 Wander', avoid:'🛡 Avoid', spin:'💫 Spin', dance:'🕺 Dance', shy:'😰 Shy', hugger:'🧱 Hugger', zigzag:'⚡ Zigzag', follow:'🤖 Follow', distance_keeper:'📏 Keeper', speed_controller:'🎚 Brakes', line_follower:'〰️ Line', boundary_patrol:'🔲 Patrol'};
+
+  // Highlight active button
+  document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('running'));
+  const btns = document.querySelectorAll('.qbtn');
+  btns.forEach(b => { if (b.getAttribute('onclick') === `quickRun('${name}')`) b.classList.add('running'); });
+
+  document.getElementById('qprogStatus').textContent = '📤 Sending ' + (labels[name]||name) + '…';
+
+  try {
+    const res  = await fetch(getRobotBase() + '/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      robotRunning = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('sendBtn').disabled = true;
+      document.getElementById('qprogStatus').textContent = '▶ Running: ' + (labels[name]||name);
+      addLog('▶ Quick program: ' + (labels[name]||name), 'action');
+    } else {
+      document.getElementById('qprogStatus').textContent = '✗ ' + data.error;
+      document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('running'));
+    }
+  } catch(e) {
+    document.getElementById('qprogStatus').textContent = '✗ ' + e.message;
+    document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('running'));
+  }
+}
+
+// ── Robot Face ────────────────────────────────────────────────────────────
+const _face = {
+  mood: 'idle',       // idle, happy, curious, worried, scared, dizzy, sleeping
+  blinkT: 0,         // blink timer
+  blinking: false,
+  roll: 0, pitch: 0, // from IMU
+  tof: -1,           // from ToF
+  maxPs: 0,          // max proximity reading
+  animT: 0,          // general animation timer
+  tofAlarm: 0,       // alarm flash timer
+};
+
+function _updateFaceMood() {
+  const ps  = _face.maxPs;
+  const tof = _face.tof;
+  const roll  = Math.abs(_face.roll);
+  const pitch = Math.abs(_face.pitch);
+
+  if (!wsConnected)            { _face.mood = 'sleeping'; }
+  else if (tof > 0 && tof < 100)    { _face.mood = 'scared';  }
+  else if (ps > 1500)                { _face.mood = 'scared';  }
+  else if (tof > 0 && tof < 250)    { _face.mood = 'worried'; }
+  else if (ps > 500)                 { _face.mood = 'worried'; }
+  else if (roll > 25 || pitch > 25)  { _face.mood = 'dizzy';   }
+  else if (roll > 10 || pitch > 10)  { _face.mood = 'curious'; }
+  else                               { _face.mood = 'happy';   }
+}
+
+function drawFace() {
+  const canvas = document.getElementById('faceCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  const R = Math.min(W,H)/2 - 8;
+
+  _face.animT += 0.04;
+  _updateFaceMood();
+
+  ctx.clearRect(0,0,W,H);
+
+  // Body tilt from IMU
+  ctx.save();
+  ctx.translate(cx, cy);
+  const tiltX = Math.max(-0.3, Math.min(0.3, _face.roll  * Math.PI/180 * 0.5));
+  const tiltY = Math.max(-0.3, Math.min(0.3, _face.pitch * Math.PI/180 * 0.5));
+  ctx.rotate(tiltX);
+  ctx.translate(tiltY * 15, 0);
+
+  // ── Head ──
+  const mood = _face.mood;
+
+  // Head glow
+  const glowColor = mood==='scared' ? 'rgba(255,59,92,0.25)'
+    : mood==='worried' ? 'rgba(255,214,0,0.2)'
+    : mood==='happy'   ? 'rgba(0,232,122,0.15)'
+    : mood==='sleeping'? 'rgba(100,100,150,0.15)'
+    : 'rgba(0,212,255,0.12)';
+  ctx.beginPath();
+  ctx.arc(0, 0, R+8, 0, Math.PI*2);
+  ctx.fillStyle = glowColor;
+  ctx.fill();
+
+  // Head circle
+  const headColor = mood==='scared'  ? '#1a0f0f'
+    : mood==='worried' ? '#1a1a0a'
+    : mood==='sleeping'? '#0f0f1a'
+    : '#0a1628';
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI*2);
+  ctx.fillStyle = headColor;
+  ctx.fill();
+  const borderColor = mood==='scared'  ? '#ff3b5c'
+    : mood==='worried' ? '#ffd600'
+    : mood==='happy'   ? '#00e87a'
+    : mood==='sleeping'? '#4a4a8a'
+    : '#00d4ff';
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // ── Ears (antenna) ──
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-R*0.5, -R*0.85); ctx.lineTo(-R*0.5, -R*1.2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( R*0.5, -R*0.85); ctx.lineTo( R*0.5, -R*1.2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(-R*0.5, -R*1.2, 4, 0, Math.PI*2);
+  ctx.fillStyle = borderColor; ctx.fill();
+  ctx.beginPath(); ctx.arc( R*0.5, -R*1.2, 4, 0, Math.PI*2);
+  ctx.fillStyle = borderColor; ctx.fill();
+
+  // ── Eyes ──
+  const eyeY = -R*0.18;
+  const eyeX = R*0.32;
+  const eyeR = R*0.22;
+
+  // Blink logic
+  _face.blinkT += 1;
+  if (!_face.blinking && _face.blinkT > (mood==='sleeping' ? 30 : 120 + Math.random()*60)) {
+    _face.blinking = true; _face.blinkT = 0;
+  }
+  if (_face.blinking && _face.blinkT > 6) {
+    _face.blinking = false; _face.blinkT = 0;
+  }
+  const blinking = _face.blinking || mood==='sleeping';
+
+  [-1, 1].forEach(side => {
+    const ex = side * eyeX;
+
+    if (blinking) {
+      // Closed eye — horizontal line
+      ctx.beginPath();
+      ctx.moveTo(ex - eyeR, eyeY);
+      ctx.lineTo(ex + eyeR, eyeY);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 3; ctx.stroke();
+      return;
+    }
+
+    // Eye white/bg
+    ctx.beginPath();
+    ctx.ellipse(ex, eyeY,
+      eyeR,
+      mood==='scared' ? eyeR*1.2 : mood==='worried' ? eyeR*0.8 : eyeR*0.95,
+      0, 0, Math.PI*2);
+    ctx.fillStyle = '#0d2040';
+    ctx.fill();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.5; ctx.stroke();
+
+    // Pupil — moves with tilt
+    const pupilOx = Math.max(-eyeR*0.35, Math.min(eyeR*0.35, tiltY*20));
+    const pupilOy = Math.max(-eyeR*0.35, Math.min(eyeR*0.35, tiltX*20));
+    const pupilR  = mood==='scared' ? eyeR*0.55 : mood==='worried' ? eyeR*0.4 : eyeR*0.45;
+    ctx.beginPath();
+    ctx.arc(ex + pupilOx, eyeY + pupilOy, pupilR, 0, Math.PI*2);
+    ctx.fillStyle = borderColor; ctx.fill();
+
+    // Shine
+    ctx.beginPath();
+    ctx.arc(ex + pupilOx - pupilR*0.3, eyeY + pupilOy - pupilR*0.3, pupilR*0.25, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill();
+
+    // Worried eyebrow
+    if (mood==='worried' || mood==='scared') {
+      const brow = mood==='scared' ? -eyeR*0.5 : -eyeR*0.3;
+      ctx.beginPath();
+      ctx.moveTo(ex - eyeR*0.8, eyeY - eyeR - 4);
+      ctx.lineTo(ex + eyeR*0.8, eyeY - eyeR - 4 + side * brow);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = 2.5; ctx.lineCap='round'; ctx.stroke();
+    }
+  });
+
+  // ── Mouth ──
+  const mouthY = R*0.42;
+  const mouthW = R*0.52;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = borderColor;
+
+  if (mood === 'happy') {
+    // Big smile
+    ctx.beginPath();
+    ctx.moveTo(-mouthW, mouthY - 4);
+    ctx.quadraticCurveTo(0, mouthY + R*0.28, mouthW, mouthY - 4);
+    ctx.stroke();
+    // Smile dimples
+    ctx.beginPath(); ctx.arc(-mouthW, mouthY-4, 3, 0, Math.PI*2);
+    ctx.fillStyle = borderColor; ctx.fill();
+    ctx.beginPath(); ctx.arc( mouthW, mouthY-4, 3, 0, Math.PI*2);
+    ctx.fillStyle = borderColor; ctx.fill();
+
+  } else if (mood === 'worried') {
+    // Slight frown
+    ctx.beginPath();
+    ctx.moveTo(-mouthW, mouthY + 4);
+    ctx.quadraticCurveTo(0, mouthY - R*0.1, mouthW, mouthY + 4);
+    ctx.stroke();
+
+  } else if (mood === 'scared') {
+    // Open O mouth
+    ctx.beginPath();
+    ctx.ellipse(0, mouthY, mouthW*0.4, R*0.15, 0, 0, Math.PI*2);
+    ctx.fillStyle = '#1a0000'; ctx.fill();
+    ctx.stroke();
+
+  } else if (mood === 'dizzy') {
+    // Wavy line
+    ctx.beginPath();
+    ctx.moveTo(-mouthW, mouthY);
+    ctx.bezierCurveTo(-mouthW*0.5, mouthY-10, mouthW*0.5, mouthY+10, mouthW, mouthY);
+    ctx.stroke();
+    // X eyes override (dizzy spirals)
+    [-1,1].forEach(side => {
+      const ex = side * eyeX;
+      ctx.strokeStyle = '#ffd600'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(ex-8, eyeY-8); ctx.lineTo(ex+8, eyeY+8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ex+8, eyeY-8); ctx.lineTo(ex-8, eyeY+8); ctx.stroke();
+    });
+
+  } else if (mood === 'sleeping') {
+    // Flat line with zzz
+    ctx.beginPath();
+    ctx.moveTo(-mouthW*0.5, mouthY);
+    ctx.lineTo( mouthW*0.5, mouthY);
+    ctx.stroke();
+    // Z z z floating
+    const zOff = (_face.animT * 20) % 30;
+    ['Z','z','·'].forEach((z, i) => {
+      ctx.font = `${14-i*3}px monospace`;
+      ctx.fillStyle = `rgba(150,150,220,${0.8-i*0.25})`;
+      ctx.textAlign = 'center';
+      ctx.fillText(z, R*0.5 + i*8, -R*0.4 - zOff - i*14);
+    });
+
+  } else {
+    // Neutral / curious — slight smile
+    ctx.beginPath();
+    ctx.moveTo(-mouthW*0.7, mouthY);
+    ctx.quadraticCurveTo(0, mouthY + R*0.12, mouthW*0.7, mouthY);
+    ctx.stroke();
+  }
+
+  // ── Mood label ──
+  const moodText = {
+    happy:'😊 HAPPY', worried:'😟 WORRIED', scared:'😱 ALERT!',
+    curious:'🤔 CURIOUS', dizzy:'😵 DIZZY', sleeping:'😴 OFFLINE', idle:'😐 IDLE'
+  };
+  const moodColors = {
+    happy:'#00e87a', worried:'#ffd600', scared:'#ff3b5c',
+    curious:'#00d4ff', dizzy:'#ffd600', sleeping:'#4a4a8a', idle:'#4a5568'
+  };
+  ctx.restore();
+  document.getElementById('faceMoodLabel').textContent  = moodText[mood]  || mood.toUpperCase();
+  document.getElementById('faceMoodLabel').style.color  = moodColors[mood] || 'var(--muted)';
+}
+
+// Animation loop for face
+(function faceLoop() {
+  drawFace();
+  requestAnimationFrame(faceLoop);
+})();
+let _wheelHoldTimer = null;
+
+// ── LED Controls ─────────────────────────────────────────────────────────
+const _rgbState = [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
+const _binState = [0,0,0,0];
+
+function hexToRgb100(hex) {
+  return [
+    Math.round(parseInt(hex.slice(1,3),16) / 2.55),
+    Math.round(parseInt(hex.slice(3,5),16) / 2.55),
+    Math.round(parseInt(hex.slice(5,7),16) / 2.55),
+  ];
+}
+
+function toggleRgbLed(idx) {
+  const el  = document.getElementById('rgbLed' + idx);
+  const isOn = el.classList.contains('on');
+  if (isOn) {
+    _rgbState[idx] = [0,0,0];
+    el.classList.remove('on');
+    el.style.setProperty('--lc','#333');
+    el.style.background = '';
+  } else {
+    const hex = document.getElementById('ledColorPicker').value;
+    _rgbState[idx] = hexToRgb100(hex);
+    el.classList.add('on');
+    el.style.setProperty('--lc', hex);
+    el.style.background = hex;
+  }
+  pushLeds();
+}
+
+function toggleBinLed(idx) {
+  const el   = document.getElementById('binLed' + idx);
+  const isOn = el.classList.contains('on');
+  _binState[idx] = isOn ? 0 : 1;
+  el.classList.toggle('on', !isOn);
+  el.style.setProperty('--lc', isOn ? '#333' : '#ffffff');
+  el.style.background = isOn ? '' : '#ffffff';
+  pushLeds();
+}
+
+function setAllRgbLeds() {
+  const hex = document.getElementById('ledColorPicker').value;
+  const rgb = hexToRgb100(hex);
+  for (let i = 0; i < 4; i++) {
+    _rgbState[i] = rgb.slice();
+    const el = document.getElementById('rgbLed' + i);
+    el.classList.add('on');
+    el.style.setProperty('--lc', hex);
+    el.style.background = hex;
+  }
+  pushLeds();
+}
+
+function allLedsOff() {
+  for (let i = 0; i < 4; i++) {
+    _rgbState[i] = [0,0,0];
+    _binState[i] = 0;
+    const re = document.getElementById('rgbLed' + i);
+    re.classList.remove('on');
+    re.style.setProperty('--lc','#333');
+    re.style.background = '';
+    const be = document.getElementById('binLed' + i);
+    be.classList.remove('on');
+    be.style.setProperty('--lc','#333');
+    be.style.background = '';
+  }
+  pushLeds();
+}
+
+async function pushLeds() {
+  if (!wsConnected) { addLog('✗ Not connected', 'warn'); return; }
+  try {
+    await fetch(getRobotBase() + '/leds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ binary: _binState, rgb: _rgbState })
+    });
+  } catch(e) {
+    addLog('✗ LED error: ' + e.message, 'warn');
+  }
+}
+let _wheelActive = null;
+
+function getWheelSpeed() {
+  return parseInt(document.getElementById('wheelSpeed').value);
+}
+
+function wheelPress(dir) {
+  clearTimeout(_wheelHoldTimer);
+  _wheelActive = dir;
+  const btns = {forward:'wFwd', backward:'wBack', left:'wLeft', right:'wRight'};
+  Object.keys(btns).forEach(d => {
+    const b = document.getElementById(btns[d]);
+    if (b) b.classList.toggle('active', d === dir);
+  });
+  const s = getWheelSpeed();
+  let l = 0, r = 0;
+  switch(dir) {
+    case 'forward':  l =  s; r =  s; break;
+    case 'backward': l = -s; r = -s; break;
+    case 'left':     l = -s; r =  s; break;
+    case 'right':    l =  s; r = -s; break;
+  }
+  pushMotors(l, r);
+}
+
+function wheelRelease() {
+  clearTimeout(_wheelHoldTimer);
+  _wheelHoldTimer = setTimeout(() => wheelStop(), 100);
+}
+
+function wheelStop() {
+  _wheelActive = null;
+  ['wFwd','wBack','wLeft','wRight'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.classList.remove('active');
+  });
+  pushMotors(0, 0);
+}
+
+async function pushMotors(left, right) {
+  document.getElementById('wReadL').textContent = left;
+  document.getElementById('wReadR').textContent = right;
+  if (!wsConnected) return;
+  try {
+    await fetch(getRobotBase() + '/motors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ left, right })
+    });
+  } catch(e) {
+    addLog('✗ Motor error: ' + e.message, 'warn');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+addLog('👋 Enter robot IP above and tap Connect', 'info');
+</script>
+</body>
+</html>
