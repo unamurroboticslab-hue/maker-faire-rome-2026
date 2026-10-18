@@ -45,7 +45,7 @@ Problems? See [`troubleshooting.md`](troubleshooting.md).
 ├── network/
 │   └── robots.md          ← robot numbers, IP addresses, URLs
 ├── docs/
-│   ├── operator-manual.pdf ← 6-page operator manual (setup, fair day, shutdown, troubleshooting)
+│   ├── operator-manual.pdf ← operator manual (setup, fair day, shutdown, troubleshooting, QR codes)
 │   ├── poster-A0.pdf      ← stand poster (print at A0)
 │   ├── robot-labels.html  ← printable QR labels for robots 1–6 and the router
 │   └── QR_NewRobots.pdf   ← printable QR codes for robots 12, 16, 24 and 25
@@ -62,17 +62,35 @@ Each robot serves these pages on port 5000 (`http://<robot IP>:5000/...`):
 | Remote control for visitors (phone) | `mobile.html` |
 | Block Coder (visual programming) | `index.html` |
 
-`mobile.html` is a simple version made for children: robot face, proximity radar, arrows, speed slider (20–70%) and STOP. It connects by itself to the robot whose QR code was scanned, and stops the robot when a finger leaves an arrow or the phone is locked. The original page, with demo programs, LEDs and all sensors, is kept in the repo as `robot/blocky/mobile-full.html` (it isn't served by the robots).
+`mobile.html` is a simple version made for children: robot face, proximity radar, arrows, speed slider (20–70%) and STOP. A Connect / Disconnect button in the header connects to the robot whose QR code was scanned; the arrows only work while connected. The page stops the robot when a finger leaves an arrow or the phone is locked. The original page, with demo programs, LEDs and all sensors, is kept in the repo as `robot/blocky/mobile-full.html` (it isn't served by the robots).
 
-### Updating the remote-control page on the robots
+### One driver at a time, and the operator page
 
-The server reads `mobile.html` fresh on every request, so no restart is needed. From the repo folder, on a laptop connected to **RoboticsLab**:
+Only one phone can drive a robot at a time. The first phone that taps **Connetti / Connect** drives; any other phone sees "Robot busy — wait for your turn" and its arrows stay off. When the driving phone disconnects or closes the page, the next waiting phone gets the robot automatically.
+
+The operator controls the turns from the laptop at **`http://<any robot IP>:5000/operator.html`** (e.g. `http://192.168.0.111:5000/operator.html`). It shows all robots, which phone is driving and for how long, and which phones are waiting:
+
+| Button | What it does |
+|---|---|
+| **End turn** | Stops the robot and frees it for the next child. That phone must wait 1–10 min (chosen at the top) before it can drive again. |
+| **Block** | Keeps a phone out until you press **Unblock**. |
+| **Free robot** | Clears the driver and every block on that robot. |
+
+The page asks for the **operator key**: `11110000` by default (same as the SSH password). To use another key, start the server with `OPERATOR_KEY=yourkey python3 server.py`.
+
+Phones are recognised by their address on the RoboticsLab WiFi, so reloading the page doesn't get around a block.
+
+### Updating the robots
+
+`mobile.html`, `operator.html` and `server.py` must be copied to every robot. From the repo folder, on a laptop connected to **RoboticsLab**:
 
 ```bash
 for ip in 111 113 114 115 121 118 112 116 124 125; do
-  scp robot/blocky/mobile.html pi@192.168.0.$ip:/home/pi/blocky/
+  scp -o ConnectTimeout=5 robot/blocky/mobile.html robot/blocky/operator.html robot/blocky/server.py pi@192.168.0.$ip:/home/pi/blocky/
 done
 ```
+
+Then restart the server on each robot (Ctrl + C in its window, then `python3 server.py`). The new `mobile.html` also works on a robot that still runs the old `server.py`, just without turn control.
 
 ## Restoring the software on a robot
 

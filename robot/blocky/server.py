@@ -187,6 +187,7 @@ def _broadcast(payload):
                     _ws_clients.remove(c)
                 except ValueError:
                     pass
+                _ws_ips.pop(c, None)
 
 
 def _append_log(line):
@@ -202,6 +203,126 @@ def _set_status(status, error=None):
         server_state["status"] = status
         server_state["last_error"] = error
     _broadcast({"type": "status", "data": status, "error": error})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Turn control — one phone drives the robot at a time.
+# Used by mobile.html (kids' remote) and operator.html (operator dashboard).
+# Phones are identified by their IP address on the robot WiFi.
+# ─────────────────────────────────────────────────────────────────────────────
+
+OPERATOR_KEY = os.environ.get("OPERATOR_KEY", "11110000")
+
+_turn_lock = threading.Lock()
+_turn = {"driver": None, "since": 0.0}   # IP of the phone that drives
+_blocked = {}                            # ip -> unblock time (epoch), 0 = until unblocked
+_ws_ips = {}                             # websocket conn -> client IP
+
+
+def _is_blocked(ip):
+    """Call with _turn_lock held. Expired blocks are removed."""
+    until = _blocked.get(ip)
+    if until is None:
+        return False
+    if until and time.time() >= until:
+        del _blocked[ip]
+        return False
+    return True
+
+
+def _turn_state_for(ip):
+    """Call with _turn_lock held. -> 'you' | 'busy' | 'free' | 'blocked'"""
+    if _is_blocked(ip):
+        return "blocked"
+    driver = _turn["driver"]
+    if driver is None:
+        return "free"
+    return "you" if driver == ip else "busy"
+
+
+def _push_turn_states():
+    """Tell every connected page what its turn state is now."""
+    with _ws_lock:
+        pairs = [(c, _ws_ips.get(c)) for c in _ws_clients]
+    with _turn_lock:
+        msgs = [(c, _turn_state_for(ip)) for c, ip in pairs if ip]
+    for conn, st in msgs:
+        _ws_send_text(conn, json.dumps({"type": "turn", "state": st}))
+
+
+def _stop_motors_now():
+    with _hal_lock:
+        hal = _hal
+    if hal is not None:
+        try:
+            hal.setMotors(0, 0)
+        except Exception:
+            pass
+
+
+def _turn_claim(ip):
+    """A phone asks to drive. Returns its turn state afterwards."""
+    with _turn_lock:
+        st = _turn_state_for(ip)
+        claimed = st == "free"
+        if claimed:
+            _turn["driver"] = ip
+            _turn["since"] = time.time()
+            st = "you"
+    if claimed:
+        log.info("Turn: {} is now driving.".format(ip))
+        _push_turn_states()
+    return st
+
+
+def _turn_release(ip=None, block_s=None):
+    """
+    Release the robot.
+      ip=None      -> release whoever is driving
+      ip="x.x.x.x" -> release only if that phone is driving
+      block_s      -> also block that phone: seconds, or 0 = until unblocked
+    Returns the IP that was targeted (or None).
+    """
+    with _turn_lock:
+        driver = _turn["driver"]
+        target = driver if ip is None else ip
+        released = target is not None and driver == target
+        if released:
+            _turn["driver"] = None
+            _turn["since"] = 0.0
+        if target is not None and block_s is not None:
+            _blocked[target] = (time.time() + block_s) if block_s > 0 else 0
+    if released:
+        _stop_motors_now()
+        log.info("Turn: {} released{}.".format(
+            target, "" if block_s is None else " and blocked"))
+    _push_turn_states()
+    return target
+
+
+def _operator_status():
+    with _ws_lock:
+        ips = [ip for ip in _ws_ips.values() if ip]
+    counts = {}
+    for ip in ips:
+        counts[ip] = counts.get(ip, 0) + 1
+    now = time.time()
+    with _turn_lock:
+        for ip in list(_blocked.keys()):
+            _is_blocked(ip)               # drop expired blocks
+        driver = _turn["driver"]
+        since = _turn["since"]
+        clients = [{"ip": ip, "pages": n, "state": _turn_state_for(ip)}
+                   for ip, n in sorted(counts.items())]
+        blocked = [{"ip": ip, "seconds_left": (int(until - now) if until else None)}
+                   for ip, until in sorted(_blocked.items())]
+    return {
+        "ok": True,
+        "driver": driver,
+        "driving_seconds": int(now - since) if driver else 0,
+        "clients": clients,
+        "blocked": blocked,
+    }
 
 
 # ── Global HAL reference (set by sensor thread once connected) ────────────────
@@ -619,6 +740,11 @@ class EpuckHandler(BaseHTTPRequestHandler):
             self._serve_static('index.html', 'text/html')
         elif path == '/mobile.html':
             self._serve_static('mobile.html', 'text/html')
+        elif path == '/operator.html':
+            self._serve_static('operator.html', 'text/html')
+        elif path == '/operator/status':
+            if self._operator_ok():
+                self._send_json(_operator_status())
         elif path == '/student.html':
             self._serve_static('student.html', 'text/html')
         elif path == '/scoreboard.html':
@@ -659,6 +785,14 @@ class EpuckHandler(BaseHTTPRequestHandler):
             self._handle_speaker_volume()
         elif path == "/motors":
             self._handle_motors()
+        elif path == "/turn/claim":
+            st = _turn_claim(self.client_address[0])
+            self._send_json({"ok": st == "you", "turn": st})
+        elif path == "/turn/release":
+            _turn_release(self.client_address[0])
+            self._send_json({"ok": True, "turn": "free"})
+        elif path.startswith("/operator/"):
+            self._handle_operator(path)
         elif path == "/camera/open":
             self._handle_camera_open()
         elif path == "/camera/close":
@@ -1070,6 +1204,51 @@ class EpuckHandler(BaseHTTPRequestHandler):
 
     # ── /motors ───────────────────────────────────────────────────────────────
 
+    def _operator_ok(self, body=None):
+        """Check the operator key (in the URL ?key=... or the JSON body)."""
+        from urllib.parse import parse_qs
+        qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+        key = (qs.get("key") or [None])[0]
+        if key is None and body:
+            key = body.get("key")
+        if key != OPERATOR_KEY:
+            self._send_json({"ok": False, "error": "Wrong operator key."}, 403)
+            return False
+        return True
+
+    def _handle_operator(self, path):
+        """
+        POST /operator/end      {key, block_seconds=120}  end the current turn
+        POST /operator/block    {key, ip, seconds=0}      block a phone (0 = until unblocked)
+        POST /operator/unblock  {key, ip}
+        POST /operator/free     {key}                     free the robot, clear all blocks
+        """
+        body = self._read_json_body() or {}
+        if not self._operator_ok(body):
+            return
+        if path == "/operator/end":
+            ip = _turn_release(None, int(body.get("block_seconds", 120)))
+            self._send_json({"ok": True, "ended": ip})
+        elif path == "/operator/block":
+            ip = body.get("ip")
+            if not ip:
+                self._send_json({"ok": False, "error": "Missing ip."}, 400)
+                return
+            _turn_release(ip, int(body.get("seconds", 0)))
+            self._send_json({"ok": True, "blocked": ip})
+        elif path == "/operator/unblock":
+            with _turn_lock:
+                _blocked.pop(body.get("ip"), None)
+            _push_turn_states()
+            self._send_json({"ok": True})
+        elif path == "/operator/free":
+            with _turn_lock:
+                _blocked.clear()
+            _turn_release(None)
+            self._send_json({"ok": True})
+        else:
+            self._send_json({"ok": False, "error": "Not found"}, 404)
+
     def _handle_motors(self):
         """
         Directly set wheel speeds on the HAL.
@@ -1081,6 +1260,13 @@ class EpuckHandler(BaseHTTPRequestHandler):
         body = self._read_json_body()
         if body is None:
             self._send_json({"ok": False, "error": "Missing JSON body."}, 400)
+            return
+
+        # Turn control: while a phone is driving, nobody else may move the robot
+        with _turn_lock:
+            turn = _turn_state_for(self.client_address[0])
+        if turn in ("busy", "blocked"):
+            self._send_json({"ok": False, "turn": turn, "error": "Not your turn."}, 403)
             return
 
         with _hal_lock:
@@ -1395,9 +1581,11 @@ class EpuckHandler(BaseHTTPRequestHandler):
         conn.setblocking(True)
         _ws_handshake(conn, key)
 
-        log.info("WebSocket client connected.")
+        client_ip = self.client_address[0]
+        log.info("WebSocket client connected ({}).".format(client_ip))
         with _ws_lock:
             _ws_clients.append(conn)
+            _ws_ips[conn] = client_ip
 
         with state_lock:
             welcome = {
@@ -1407,6 +1595,9 @@ class EpuckHandler(BaseHTTPRequestHandler):
                 "sensors": server_state["sensors"],
             }
         _ws_send_text(conn, json.dumps(welcome))
+        with _turn_lock:
+            _st = _turn_state_for(client_ip)
+        _ws_send_text(conn, json.dumps({"type": "turn", "state": _st}))
 
         # Keep open until client disconnects
         # Every 5 s we time out on recv and send a WS ping text frame
@@ -1427,7 +1618,12 @@ class EpuckHandler(BaseHTTPRequestHandler):
                 _ws_clients.remove(conn)
             except ValueError:
                 pass
-        log.info("WebSocket client disconnected.")
+            _ws_ips.pop(conn, None)
+            still_open = client_ip in _ws_ips.values()
+        log.info("WebSocket client disconnected ({}).".format(client_ip))
+        # The driving phone closed its page -> free the robot
+        if not still_open:
+            _turn_release(client_ip)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1474,7 +1670,7 @@ if __name__ == "__main__":
 
     server = ThreadedHTTPServer((args.host, args.port), EpuckHandler)
     log.info("e-puck Block Coder server → {}:{}".format(args.host, args.port))
-    log.info("Endpoints: /ping  /run  /stop  /sensors  /status  /logs  /speaker  /motors  /camera/*  /randb/*  /ws")
+    log.info("Endpoints: /ping  /run  /stop  /sensors  /status  /logs  /speaker  /motors  /camera/*  /randb/*  /ws  /turn/*  /operator/*")
 
     try:
         server.serve_forever()

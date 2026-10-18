@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Robot Operator</title>
+<!--
+  Operator dashboard — Maker Faire Rome 2026, UNamur Robotics Lab.
+  Shows every robot: which phone is driving and which phones are watching.
+  End a turn, block or unblock a phone, or free a robot.
+  Open on the operator laptop: http://<any robot IP>:5000/operator.html
+  Needs the operator key (default: the robots' SSH password).
+-->
+<style>
+  :root {
+    --bg: #f2f5f9; --panel: #ffffff; --border: #d6dee8; --text: #13213a; --muted: #5c6b80;
+    --accent: #0a7fc0; --green: #0e8f5a; --yellow: #a87900; --red: #c9283f; --chip: #eef2f7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1420; --panel: #141e2e; --border: #263449; --text: #e7eefb; --muted: #8796ad;
+      --accent: #3cbcff; --green: #2fd98d; --yellow: #f1c84b; --red: #ff5c75; --chip: #1c2940;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  h1 { font-size: 1.3rem; }
+  h1 small { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input, select {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); min-width: 0;
+  }
+  input { width: 150px; }
+  label { font-size: 0.85rem; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  button {
+    font: inherit; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--chip); color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger  { background: var(--red); border-color: var(--red); color: #fff; }
+  button.warn    { border-color: var(--yellow); color: var(--yellow); background: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .card.offline { opacity: 0.55; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .name { font-weight: 800; font-size: 1.1rem; }
+  .name small { font-weight: 500; color: var(--muted); font-size: 0.8rem; margin-left: 6px; }
+  .pill { font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .pill.on { color: var(--green); }
+  .pill.err { color: var(--red); }
+  .driver { border-radius: 10px; padding: 10px; background: var(--chip); display: flex; flex-direction: column; gap: 8px; }
+  .driver .who { font-weight: 700; }
+  .driver .who span { color: var(--muted); font-weight: 500; }
+  .driver.free .who { color: var(--muted); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .section { font-size: 0.75rem; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .rows { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.9rem; }
+  .row .ip { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .row .tag { font-size: 0.75rem; color: var(--muted); margin-left: 6px; }
+  .empty { font-size: 0.85rem; color: var(--muted); }
+  .msg { font-size: 0.85rem; color: var(--red); min-height: 1.2em; }
+  .help { margin-top: 18px; font-size: 0.85rem; color: var(--muted); }
+  .help b { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Robot Operator<small>Maker Faire Rome 2026 · UNamur Robotics Lab</small></h1>
+    <div class="bar">
+      <label>Operator key <input id="key" type="password" autocomplete="off" placeholder="key"></label>
+      <label>After “End turn”, phone waits
+        <select id="wait">
+          <option value="60">1 min</option>
+          <option value="120" selected>2 min</option>
+          <option value="300">5 min</option>
+          <option value="600">10 min</option>
+        </select>
+      </label>
+      <label>Add robot <input id="extraIp" placeholder="192.168.x.x"></label>
+      <button id="addBtn" onclick="addRobot()">Add</button>
+    </div>
+  </header>
+
+  <div class="msg" id="msg"></div>
+  <div class="grid" id="grid"></div>
+
+  <p class="help">
+    <b>End turn</b> stops the robot and frees it for the next child; that phone has to wait the time chosen above.
+    <b>Block</b> keeps a phone out until you press <b>Unblock</b>.
+    <b>Free robot</b> lets everyone in again.
+    Phones are shown by their address on the RoboticsLab WiFi.
+  </p>
+</div>
+
+<script>
+const DEFAULT_ROBOTS = [
+  ['1', '192.168.0.111'], ['2', '192.168.0.113'], ['3', '192.168.0.114'],
+  ['4', '192.168.0.115'], ['5', '192.168.0.121'], ['6', '192.168.0.118'],
+  ['12', '192.168.0.112'], ['16', '192.168.0.116'], ['24', '192.168.0.124'],
+  ['25', '192.168.0.125'],
+];
+
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function save(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+let extra = [];
+try { extra = JSON.parse(load('op-extra') || '[]'); } catch (e) { extra = []; }
+const keyEl = document.getElementById('key');
+const waitEl = document.getElementById('wait');
+keyEl.value = load('op-key') || '';
+waitEl.value = load('op-wait') || '120';
+keyEl.addEventListener('change', () => { save('op-key', keyEl.value); pollAll(); });
+waitEl.addEventListener('change', () => save('op-wait', waitEl.value));
+
+// If this page was opened from a robot that isn't in the list (e.g. on a test hotspot), show it too
+const servedFrom = location.protocol.startsWith('http') ? location.hostname : '';
+
+function robots() {
+  const list = DEFAULT_ROBOTS.concat(extra.map(ip => ['?', ip]));
+  if (servedFrom && !list.some(r => r[1] === servedFrom)) list.unshift(['?', servedFrom]);
+  return list;
+}
+
+function addRobot() {
+  const ip = document.getElementById('extraIp').value.trim();
+  if (!ip || robots().some(r => r[1] === ip)) return;
+  extra.push(ip); save('op-extra', JSON.stringify(extra));
+  document.getElementById('extraIp').value = '';
+  render(); pollAll();
+}
+function removeRobot(ip) {
+  extra = extra.filter(x => x !== ip); save('op-extra', JSON.stringify(extra));
+  delete status[ip]; render();
+}
+
+const status = {};   // ip -> {state: 'online'|'offline'|'badkey'|'oldserver', data}
+
+function fetchJson(url, opts, ms) {
+  const c = new AbortController();
+  const tid = setTimeout(() => c.abort(), ms || 1500);
+  return fetch(url, Object.assign({ signal: c.signal }, opts || {}))
+    .then(r => r.json().then(d => ({ code: r.status, d })))
+    .finally(() => clearTimeout(tid));
+}
+
+function poll(ip) {
+  const url = 'http://' + ip + ':5000/operator/status?key=' + encodeURIComponent(keyEl.value);
+  return fetchJson(url).then(({ code, d }) => {
+    if (code === 403) status[ip] = { state: 'badkey' };
+    else if (code === 404) status[ip] = { state: 'oldserver' };
+    else status[ip] = { state: 'online', data: d };
+  }).catch(() => { status[ip] = { state: 'offline' }; });
+}
+
+function pollAll() {
+  Promise.all(robots().map(r => poll(r[1]))).then(render);
+}
+
+function act(ip, path, body) {
+  body = Object.assign({ key: keyEl.value }, body || {});
+  return fetchJson('http://' + ip + ':5000/operator/' + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }, 3000).then(({ code, d }) => {
+    if (!d.ok) setMsg('Robot ' + ip + ': ' + (d.error || ('error ' + code)));
+    else setMsg('');
+  }).catch(() => setMsg('Robot ' + ip + ' did not answer.'))
+    .then(() => poll(ip)).then(render);
+}
+
+function setMsg(t) { document.getElementById('msg').textContent = t; }
+
+function fmt(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function esc(t) { return String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function render() {
+  const grid = document.getElementById('grid');
+  const KEY_MSG = 'Enter the operator key to control the robots.';
+  const msgEl = document.getElementById('msg');
+  if (!keyEl.value) setMsg(KEY_MSG);
+  else if (msgEl.textContent === KEY_MSG) setMsg('');
+  grid.innerHTML = robots().map(([num, ip]) => {
+    const st = status[ip] || { state: 'offline' };
+    const d = st.data;
+    const pill = st.state === 'online' ? '<span class="pill on">● online</span>'
+      : st.state === 'badkey' ? '<span class="pill err">wrong key</span>'
+      : st.state === 'oldserver' ? '<span class="pill err">old server.py</span>'
+      : '<span class="pill">offline</span>';
+    const name = (num === '?' ? 'Robot' : 'Robot ' + num) + '<small>' + esc(ip) + '</small>';
+    const rm = (num === '?' && ip !== servedFrom) ? ' <button onclick="removeRobot(\'' + esc(ip) + '\')" title="Remove">✕</button>' : '';
+    let body = '';
+    if (st.state === 'online') {
+      const waitMin = Math.round(parseInt(waitEl.value, 10) / 60);
+      const driver = d.driver
+        ? '<div class="driver"><div class="who">🎮 ' + esc(d.driver) + ' <span>driving for ' + fmt(d.driving_seconds) + '</span></div>' +
+          '<div class="actions">' +
+          '<button class="primary" onclick="act(\'' + ip + '\',\'end\',{block_seconds:' + parseInt(waitEl.value, 10) + '})">End turn (' + waitMin + ' min wait)</button>' +
+          '<button class="danger" onclick="act(\'' + ip + '\',\'block\',{ip:\'' + esc(d.driver) + '\',seconds:0})">Block</button>' +
+          '</div></div>'
+        : '<div class="driver free"><div class="who">Free — the next phone that connects will drive</div></div>';
+      const watchers = d.clients.filter(c => c.ip !== d.driver);
+      const wRows = watchers.length ? watchers.map(c =>
+        '<div class="row"><div><span class="ip">' + esc(c.ip) + '</span><span class="tag">' + (c.state === 'blocked' ? 'blocked' : 'waiting') + '</span></div>' +
+        (c.state === 'blocked' ? '' : '<button class="warn" onclick="act(\'' + ip + '\',\'block\',{ip:\'' + esc(c.ip) + '\',seconds:0})">Block</button>') + '</div>'
+      ).join('') : '<div class="empty">No other phones connected.</div>';
+      const bRows = d.blocked.length ? d.blocked.map(b =>
+        '<div class="row"><div><span class="ip">' + esc(b.ip) + '</span><span class="tag">' +
+        (b.seconds_left === null ? 'until unblocked' : fmt(Math.max(0, b.seconds_left)) + ' left') + '</span></div>' +
+        '<button onclick="act(\'' + ip + '\',\'unblock\',{ip:\'' + esc(b.ip) + '\'})">Unblock</button></div>'
+      ).join('') : '<div class="empty">Nobody is blocked.</div>';
+      body = driver +
+        '<div class="section">Other phones</div><div class="rows">' + wRows + '</div>' +
+        '<div class="section">Blocked</div><div class="rows">' + bRows + '</div>' +
+        '<div class="actions"><button onclick="act(\'' + ip + '\',\'free\')">Free robot (clear all)</button></div>';
+    } else if (st.state === 'oldserver') {
+      body = '<div class="empty">This robot still runs the old server.py. Copy the new one and restart it to control turns.</div>';
+    } else if (st.state === 'badkey') {
+      body = '<div class="empty">The operator key is wrong.</div>';
+    } else {
+      body = '<div class="empty">Not reachable. Is the robot on and is server.py running?</div>';
+    }
+    return '<div class="card' + (st.state === 'online' ? '' : ' offline') + '"><div class="top"><div class="name">' + name + '</div><div>' + pill + rm + '</div></div>' + body + '</div>';
+  }).join('');
+}
+
+render();
+pollAll();
+setInterval(pollAll, 2000);
+</script>
+</body>
+</html>

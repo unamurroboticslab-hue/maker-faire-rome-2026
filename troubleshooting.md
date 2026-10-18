@@ -25,14 +25,12 @@ Robot addresses are in [`network/robots.md`](network/robots.md). All of them sta
 
 ## End of the day
 
-Shut each robot down properly so its memory card isn't damaged. In each robot's terminal window:
+Switch each robot off with its two blue buttons, in this order:
 
-```bash
-# stop the server: Ctrl + C
-sudo shutdown now
-```
+1. Press the **blue button on the robot** (the e-puck2) to switch it off.
+2. Press and **hold the blue button on top of the Pi-puck for 6–7 seconds**, until it switches off.
 
-Wait until the LEDs go out, then switch the robot off. Switch the router off last, and put the robots on charge.
+You don't need to type anything in the terminal. Switch the router off last, and put the robots on charge.
 
 ## Quick reference
 
@@ -40,6 +38,6 @@ Wait until the LEDs go out, then switch the robot off. Switch the router off las
 Start a robot:  ssh pi@192.168.0.1xx   (password 11110000)
                 cd /home/pi/blocky
                 python3 server.py
-Stop a robot:   Ctrl + C, then sudo shutdown now
+Stop a robot:   blue button on the robot, then hold the Pi-puck's top button 6–7 s
 WiFi:           RoboticsLab · EpuckRobot
 ```
